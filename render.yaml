@@ -1,0 +1,35 @@
+# One-click deploy on Render (Dashboard → New → Blueprint → pick this repo).
+# Frontend and backend run as ONE service on one origin, so the secure
+# SameSite=Strict session cookie and the strict CSP work as designed.
+services:
+  - type: web
+    name: ghostslot
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm --prefix server install --omit=dev && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      # Required: accounts + Campus Twin live in Supabase (Render's free
+      # disk is wiped on every deploy). Paste both from the Supabase dashboard:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CSI_DEVICE_KEY
+        generateValue: true
+      # Demo login for judges: a random password is generated on Render and
+      # shown on the login screen (never committed to the repo).
+      - key: DEMO_PASSWORD
+        generateValue: true
+      # Campus Twin: assumed electricity tariff for the ₹-wasted estimate.
+      - key: TWIN_TARIFF_INR_PER_KWH
+        value: "8"
