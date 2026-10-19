@@ -18,6 +18,11 @@ services:
         generateValue: true
       - key: GEMINI_API_KEY
         sync: false
+      # Change these on Render (no code change) if Google retires the model.
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: GEMINI_PARSE_MODEL
+        value: gemini-3.6-flash
       # Required: accounts + Campus Twin live in Supabase (Render's free
       # disk is wiped on every deploy). Paste both from the Supabase dashboard:
       - key: SUPABASE_URL

@@ -116,8 +116,8 @@ app.use("/api", buildTwin({ requireAuth, sameOriginOnly }));
 // limited per account, inputs capped, key sent in a header (not the URL).
 // ---------------------------------------------------------------------------
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const PARSE_MODEL = process.env.GEMINI_PARSE_MODEL || "gemini-2.5-flash";
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const PARSE_MODEL = process.env.GEMINI_PARSE_MODEL || "gemini-3.6-flash";
 const geminiUrl = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
 const aiLimiter = rateLimit({
