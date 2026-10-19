@@ -16,7 +16,7 @@ const BACKFILL_MAX_MS = 14 * 24 * 3600 * 1000;
 // TWIN_ADMIN_ROLLS (comma separated). Default: the judges' demo account, so
 // the demo works, while ordinary student sign-ups only get read access.
 function adminRolls() {
-  const raw = process.env.TWIN_ADMIN_ROLLS ?? (process.env.DEMO_ACCOUNT === "off" ? "" : (process.env.DEMO_ROLL || "23BCS10432"));
+  const raw = process.env.TWIN_ADMIN_ROLLS || (process.env.DEMO_ACCOUNT === "off" ? "" : (process.env.DEMO_ROLL || "23BCS10432"));
   return new Set(raw.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean));
 }
 const canManage = (user) => !!user && adminRolls().has(String(user.roll_lower || "").toLowerCase());
