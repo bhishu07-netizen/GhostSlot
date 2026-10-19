@@ -206,6 +206,12 @@ test("Wi-Fi CSI: device key required, admin endpoints off without a key", async 
   assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", value: 50 }, origin: null })).status, 401);
   const ok = await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", value: 50 }, origin: null, headers: { "X-Device-Key": "dev-key-123" } });
   assert.equal(ok.status, 409); // key accepted; server is in simulation mode
+  // Heartbeat marks the board seen without feeding a reading.
+  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", heartbeat: true }, origin: null })).status, 401);
+  const hb = await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", heartbeat: true }, origin: null, headers: { "X-Device-Key": "dev-key-123" } });
+  assert.equal(hb.status, 200);
+  assert.ok(hb.data.status.devices["node-a"].lastSeen);
+  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "oled", heartbeat: true }, origin: null, headers: { "X-Device-Key": "dev-key-123" } })).status, 400);
   assert.equal((await c("/api/csi/mode", { method: "POST", body: { mode: "hardware" }, origin: null })).status, 403);
 });
 

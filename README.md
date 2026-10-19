@@ -228,6 +228,10 @@ POST /api/csi/demo-room
 X-Device-Key: <CSI_DEVICE_KEY>
 { "nodeId": "node-a", "value": 52.3 }
 ```
+The transmitter (node-a) has no reading of its own, so it sends a heartbeat that
+marks it online without entering the pipeline: `{ "nodeId": "node-a", "heartbeat": true }`.
+Firmware for all three boards and the build guide live in `hardware/`.
+
 The OLED polls `GET /api/csi/status?device=oled` with the same `X-Device-Key` header
 to show as online. The calibrate and mode-switch endpoints need `X-Admin-Key: <CSI_ADMIN_KEY>`
 and are switched off if no admin key is set.

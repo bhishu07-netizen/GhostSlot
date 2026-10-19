@@ -245,7 +245,15 @@ export const router = express.Router();
 
 // A real ESP32-S3 node (or the OLED, purely to mark itself "seen") posts here.
 router.post("/csi/demo-room", express.json({ limit: "2kb" }), requireDeviceKey, (req, res) => {
-  const { nodeId, value } = req.body || {};
+  const { nodeId, value, heartbeat } = req.body || {};
+  // Heartbeat: the transmitter (node-a) only sends packets for node-b to
+  // measure, so it has no reading of its own. It reports "I'm alive" here;
+  // nothing enters the CSI pipeline.
+  if (heartbeat === true) {
+    if (!["node-a", "node-b"].includes(nodeId)) return res.status(400).json({ error: "invalid_nodeId" });
+    state.devices[nodeId].lastSeen = new Date();
+    return res.json({ ok: true, status: publicStatus() });
+  }
   if (state.mode !== "hardware") {
     return res.status(409).json({ error: "not_in_hardware_mode", mode: state.mode });
   }
