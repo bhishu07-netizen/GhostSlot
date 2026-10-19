@@ -33,8 +33,8 @@ You need **Node.js 20 or newer** (`node -v` to check).
    ```
 5. Open **http://localhost:5173**
 
-**Demo login** (shown on the login screen): roll `23BCS10432`. Locally the password
-is `Ghost-Demo-2026`; on Render it's a random value generated at deploy.
+**Demo login** (shown on the login screen): roll `23BCS10432`, password `Ghost-Demo-2026`
+(change it with `DEMO_PASSWORD`; it's public on purpose so judges can get in).
 
 > Login now really needs the backend. If you only run `npm run dev`, the
 > login screen will say it can't reach the server.
@@ -48,6 +48,15 @@ is `Ghost-Demo-2026`; on Render it's a random value generated at deploy.
 | `npm test` | Runs the 19 security, age-gate and twin tests |
 | `npm run audit` | Checks every package for known vulnerabilities |
 | `npm run build` then `npm start` | Production mode: the backend serves the built app on one origin |
+
+---
+
+## Live time vs demo time
+
+The clock at the top follows the **real time in India (IST)** by default (green *live IST* chip),
+on any device timezone. Change the day or time by hand to look ahead, tap **back to now** to return,
+or tap **demo time** (Mon 11:15) for the pitch, where the sample timetables tell the cleanest story.
+Classrooms show as *closed* on Sundays and outside 09:00–17:00.
 
 ---
 
@@ -190,7 +199,6 @@ Use **Render** with the included `render.yaml` (Dashboard → New → Blueprint)
 The app and API run on one domain, which the secure cookies and the CSP rely on.
 Render asks for `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required: accounts and the twin
 live there, and Render's free disk is wiped on every deploy) and `GEMINI_API_KEY` (optional).
-The demo password is generated randomly by Render and shown on the login screen.
 Free Render services sleep after 15 idle minutes, so open the link ~1 minute before a demo.
 Before a real launch, set `DEMO_ACCOUNT=off`.
 

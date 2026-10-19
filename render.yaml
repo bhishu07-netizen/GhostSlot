@@ -31,10 +31,10 @@ services:
         sync: false
       - key: CSI_DEVICE_KEY
         generateValue: true
-      # Demo login for judges: a random password is generated on Render and
-      # shown on the login screen (never committed to the repo).
+      # Demo login for judges is shown on the login screen. Set DEMO_PASSWORD
+      # to something easy to type (default: Ghost-Demo-2026).
       - key: DEMO_PASSWORD
-        generateValue: true
+        sync: false
       # Campus Twin: assumed electricity tariff for the ₹-wasted estimate.
       - key: TWIN_TARIFF_INR_PER_KWH
         value: "8"

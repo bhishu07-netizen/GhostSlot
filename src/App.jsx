@@ -1735,7 +1735,7 @@ export default function GhostSlot() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div style={{ background: "rgba(61,220,151,0.08)", border: "1px solid rgba(61,220,151,0.22)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#3DDC97", display: "flex", alignItems: "center", gap: 5 }}><CheckCircle2 size={13} /> 18+ verified</div>
-                <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString()}` : ""}. Birth date not stored.</div>
+                <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. Birth date not stored.</div>
               </div>
               <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><MonitorSmartphone size={13} /> {currentUser.activeSessions || 1} active session{(currentUser.activeSessions || 1) === 1 ? "" : "s"}</div>
