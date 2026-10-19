@@ -210,3 +210,11 @@ git remote add origin https://github.com/<your-username>/<your-repo-name>.git
 git push -u origin main
 ```
 `.env`, `server/.env` and `server/data/` are git-ignored, so no secrets or accounts get pushed.
+
+---
+
+## Acknowledgements
+
+Built by Bhavishay (Bhishu), Team COGNIX, Chandigarh University, with help from AI tools (Claude).
+Campus Twin analysis methods were tested on public datasets: UCI Occupancy Detection (Candanedo & Feldheim, 2016)
+and UCI Appliances Energy Prediction (Candanedo, Feldheim & Deramaix, 2017).
