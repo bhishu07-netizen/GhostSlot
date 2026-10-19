@@ -14,6 +14,7 @@ const data = {
   gs_twin_buildings: [{ id: "A1", name: "A1 Block" }],
   gs_twin_alert_acks: [],
   gs_twin_water: [{ ts: NOW, litres: 400 }],
+  gs_twin_readings: [],
 };
 const rpcs = {
   gs_twin_generate: 0,
@@ -38,7 +39,7 @@ const fakeClient = {
   rpc: async (fn) => ({ data: rpcs[fn], error: null }),
   from: (name) => {
     const q = {
-      select: () => q, order: () => q, eq: () => q, gte: () => q,
+      select: () => q, order: () => q, eq: () => q, gte: () => q, limit: () => q,
       then: (ok) => ok({ data: data[name], error: null }),
       upsert: async (row) => { upserts.push(row); return { error: null }; },
     };
@@ -53,7 +54,9 @@ before(async () => {
   const requireAuth = (req, res, next) => {
     const who = req.get("x-test-user");
     if (!who) return res.status(401).json({ error: "not_signed_in" });
-    req.user = who === "student" ? { id: "u2", roll_lower: "24bcs99999" } : { id: "u1", roll_lower: "23bcs10432" };
+    req.user = who === "student" ? { id: "u2", roll_lower: "24bcs99999", role: "student" }
+      : who === "faculty" ? { id: "u3", roll_lower: "e21045", role: "faculty" }
+      : { id: "u1", roll_lower: "fms2041", role: "facilities" };
     next();
   };
   const sameOriginOnly = (_req, _res, next) => next();
@@ -99,11 +102,30 @@ test("water series validates the building id", async () => {
   assert.equal(ok.readings.length, 1);
 });
 
+test("only facilities staff can log readings, with validated values", async () => {
+  const post = (who, body) => fetch(base + "/twin/readings", { method: "POST", headers: { "Content-Type": "application/json", "x-test-user": who }, body: JSON.stringify(body) });
+  assert.equal((await post("student", { kind: "water", buildingId: "A1", litres: 120 })).status, 403);
+  assert.equal((await post("faculty", { kind: "water", buildingId: "A1", litres: 120 })).status, 403);
+  assert.equal((await post("facilities", { kind: "water", buildingId: "A1", litres: -5 })).status, 400);
+  assert.equal((await post("facilities", { kind: "energy", roomId: "A1-105", powerKw: 999, occupants: 3 })).status, 400);
+  assert.equal((await post("facilities", { kind: "energy", roomId: "A1-105", powerKw: 2.4, occupants: 1.5 })).status, 400);
+  assert.equal((await post("facilities", { kind: "gas", buildingId: "A1" })).status, 400);
+  const ok = await post("facilities", { kind: "water", buildingId: "A1", litres: 120 });
+  assert.equal(ok.status, 201);
+  const row = upserts.at(-1);
+  assert.equal(row.source, "manual");
+  assert.equal(row.logged_by, "u1");
+  assert.equal(new Date(row.ts).getTime() % (15 * 60 * 1000), 0); // snapped to a 15-min slot
+  assert.equal((await post("facilities", { kind: "energy", roomId: "A1-105", powerKw: 2.4, occupants: 12 })).status, 201);
+});
+
 test("only facilities accounts can update alerts", async () => {
   const res = await fetch(base + "/twin/alerts/ack", { method: "POST", headers: { "Content-Type": "application/json", "x-test-user": "student" }, body: JSON.stringify({ key: "water:A1:2026-10-18T20:00:00+00:00", status: "resolved" }) });
   assert.equal(res.status, 403);
   const student = await (await fetch(base + "/twin/overview", { headers: { "x-test-user": "student" } })).json();
   assert.equal(student.canManageAlerts, false);
+  const faculty = await (await fetch(base + "/twin/overview", { headers: { "x-test-user": "faculty" } })).json();
+  assert.equal(faculty.canManageAlerts, false);
   const admin = await (await get("/twin/overview")).json();
   assert.equal(admin.canManageAlerts, true);
 });
@@ -120,7 +142,7 @@ test("alert ack validates key and status, then stores it", async () => {
 
 test("without Supabase configured the twin says so instead of failing", async () => {
   const app = express();
-  const requireAuth = (req, _res, next) => ((req.user = { id: "u1" }), next());
+  const requireAuth = (req, _res, next) => ((req.user = { id: "u1", role: "facilities" }), next());
   delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   app.use("/api", buildTwin({ requireAuth, sameOriginOnly: (_q, _s, n) => n(), autoTick: false }));
   const s = await new Promise((r) => { const x = app.listen(0, () => r(x)); });

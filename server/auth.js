@@ -19,7 +19,7 @@ import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
 import {
   IS_PROD, MIN_AGE, ageOn, parseDob, hashPassword, verifyPassword, dummyHash, newToken, sha256,
-  signPayload, verifyPayload, ROLL_RE, NAME_RE, passwordProblem, cleanText,
+  signPayload, verifyPayload, ROLL_RE, NAME_RE, passwordProblem, cleanText, ROLES, DEPARTMENTS,
 } from "./security.js";
 import { DuplicateError } from "./store.js";
 
@@ -42,11 +42,28 @@ function json429(message) {
   return (_req, res) => res.status(429).json({ error: "rate_limited", message });
 }
 
+// Facilities self sign-up needs this code from the estate office. If it
+// isn't configured, facilities sign-up is closed (accounts only via the demo
+// or created by an admin), so nobody can just pick "facilities".
+function facilitiesCodeOk(given) {
+  const expected = process.env.FACILITIES_ACCESS_CODE;
+  if (!expected || typeof given !== "string" || !given) return false;
+  const a = crypto.createHash("sha256").update(given.trim()).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+const roleOf = (u) => (ROLES.includes(u?.role) ? u.role : "student");
+export const canManageTwin = (u) => roleOf(u) === "facilities";
+
 export function publicUser(u, extra = {}) {
   return {
     id: u.id,
     roll: u.roll,
     name: u.name,
+    role: roleOf(u),
+    department: u.department || null,
+    canManageTwin: canManageTwin(u),
     ageVerified: !!u.age_verified_adult,
     ageCheckedAt: u.age_checked_at,
     createdAt: u.created_at,
@@ -119,7 +136,10 @@ export function buildAuth(store) {
   router.get("/config", (req, res) => {
     const demoOn = process.env.DEMO_ACCOUNT !== "off";
     res.json({
+      // Kept for older clients: the student demo.
       demo: demoOn ? { roll: DEMO_ROLL, password: DEMO_PASSWORD } : null,
+      demos: demoOn ? Object.fromEntries(DEMO_USERS.map((d) => [d.role, { roll: d.roll, password: DEMO_PASSWORD }])) : null,
+      facilitiesSignupOpen: Boolean(process.env.FACILITIES_ACCESS_CODE),
       ageGate: ageLockInfo(req),
     });
   });
@@ -157,11 +177,24 @@ export function buildAuth(store) {
       }
       if (spentAgeNonces.has(age.n)) return res.status(403).json({ error: "age_check_required", message: "Please complete the age check again." });
 
+      const role = req.body?.role === undefined ? "student" : req.body.role;
+      if (!ROLES.includes(role)) return res.status(400).json({ error: "invalid_role", message: "Pick student, faculty or facilities staff." });
+      let department = null;
+      if (role !== "student") {
+        department = cleanText(req.body?.department, 40);
+        if (!DEPARTMENTS[role].includes(department)) {
+          return res.status(400).json({ error: "invalid_department", message: role === "faculty" ? "Pick your department." : "Pick your team." });
+        }
+      }
+      if (role === "facilities") {
+        if (!process.env.FACILITIES_ACCESS_CODE) return res.status(403).json({ error: "facilities_signup_closed", message: "Facilities sign-up is closed. Ask the estate office to create your account." });
+        if (!facilitiesCodeOk(req.body?.accessCode)) return res.status(403).json({ error: "bad_access_code", message: "That facilities access code isn't right. Get it from the estate office." });
+      }
       const name = cleanText(req.body?.name, 60);
       const roll = cleanText(req.body?.roll, 15);
       const password = typeof req.body?.password === "string" ? req.body.password : "";
       if (!NAME_RE.test(name)) return res.status(400).json({ error: "invalid_name", message: "Use your real name (letters only, 2–60 characters)." });
-      if (!ROLL_RE.test(roll)) return res.status(400).json({ error: "invalid_roll", message: "Roll numbers are 6–15 letters/numbers, like 23BCS10432." });
+      if (!ROLL_RE.test(roll)) return res.status(400).json({ error: "invalid_roll", message: role === "student" ? "Roll numbers are 6–15 letters/numbers, like 23BCS10432." : "IDs are 6–15 letters/numbers, like E21045." });
       const pwErr = passwordProblem(password, { roll, name });
       if (pwErr) return res.status(400).json({ error: "weak_password", message: pwErr });
       if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required", message: "Please accept the privacy notice to continue." });
@@ -173,6 +206,8 @@ export function buildAuth(store) {
           roll,
           roll_lower: roll.toLowerCase(),
           name,
+          role,
+          department,
           password_hash: await hashPassword(password),
           age_verified_adult: true,
           age_checked_at: new Date(age.iat).toISOString(),
@@ -181,7 +216,7 @@ export function buildAuth(store) {
       } catch (err) {
         if (err instanceof DuplicateError) {
           spentAgeNonces.delete(age.n);
-          return res.status(409).json({ error: "roll_taken", message: "That roll number already has an account. Try logging in." });
+          return res.status(409).json({ error: "roll_taken", message: "That ID already has an account. Try logging in." });
         }
         throw err;
       }
@@ -194,12 +229,17 @@ export function buildAuth(store) {
   router.post("/login", loginIpLimiter, loginRollLimiter, async (req, res, next) => {
     try {
       const roll = cleanText(req.body?.roll, 15);
+      const role = req.body?.role === undefined ? null : req.body.role;
       const password = typeof req.body?.password === "string" ? req.body.password.slice(0, 128) : "";
       const user = ROLL_RE.test(roll) ? await store.findUserByRoll(roll.toLowerCase()) : null;
       // Always run one scrypt verification so "no such user" and "wrong
       // password" take the same time and return the same message.
       const ok = await verifyPassword(password, user ? user.password_hash : await dummyHash());
-      if (!user || !ok) return res.status(401).json({ error: "invalid_credentials", message: "Roll number or password doesn't match." });
+      // A login must also match the role that was picked, so a facilities ID
+      // can't be used from the student screen (or the other way round).
+      // Same generic message, so the response doesn't reveal which role an ID has.
+      const roleOk = role === null || (ROLES.includes(role) && roleOf(user) === role);
+      if (!user || !ok || !roleOk) return res.status(401).json({ error: "invalid_credentials", message: "ID or password doesn't match for this role." });
 
       // Rotate: any session cookie the browser had is replaced by a fresh one.
       const old = req.cookies?.[SESSION_COOKIE];
@@ -263,22 +303,37 @@ export function buildAuth(store) {
 // ---------------------------------------------------------------------------
 export const DEMO_ROLL = process.env.DEMO_ROLL || "23BCS10432";
 export const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "Ghost-Demo-2026";
+// One shared demo account per role, so judges can see what each role can do.
+export const DEMO_USERS = [
+  { role: "student", roll: DEMO_ROLL, name: "Aryan", department: null },
+  { role: "faculty", roll: process.env.DEMO_FACULTY_ID || "E21045", name: "Dr. Meera Sharma", department: "CSE" },
+  { role: "facilities", roll: process.env.DEMO_FACILITIES_ID || "FMS2041", name: "Ravi Kumar", department: "Electrical" },
+];
+const DEMO_IDS = new Set(DEMO_USERS.map((d) => d.roll.toLowerCase()));
 export function isDemoUser(u) {
-  return process.env.DEMO_ACCOUNT !== "off" && !!u && u.roll_lower === DEMO_ROLL.toLowerCase();
+  return process.env.DEMO_ACCOUNT !== "off" && !!u && DEMO_IDS.has(String(u.roll_lower || "").toLowerCase());
 }
 
 export async function ensureDemoUser(store) {
   if (process.env.DEMO_ACCOUNT === "off") return;
-  const existing = await store.findUserByRoll(DEMO_ROLL.toLowerCase());
-  if (existing) return;
-  await store.createUser({
-    roll: DEMO_ROLL,
-    roll_lower: DEMO_ROLL.toLowerCase(),
-    name: "Aryan",
-    password_hash: await hashPassword(DEMO_PASSWORD),
-    age_verified_adult: true,
-    age_checked_at: new Date().toISOString(),
-    consent_at: new Date().toISOString(),
-  });
-  console.log(`[auth] demo account ready: ${DEMO_ROLL}`);
+  for (const d of DEMO_USERS) {
+    const existing = await store.findUserByRoll(d.roll.toLowerCase());
+    if (existing) {
+      // Never take over a real account that happens to use a demo ID.
+      if (roleOf(existing) !== d.role) console.warn(`[auth] demo ${d.role} ID ${d.roll} is taken by another account; set DEMO_${d.role.toUpperCase()}_ID to a free ID`);
+      continue;
+    }
+    await store.createUser({
+      roll: d.roll,
+      roll_lower: d.roll.toLowerCase(),
+      name: d.name,
+      role: d.role,
+      department: d.department,
+      password_hash: await hashPassword(DEMO_PASSWORD),
+      age_verified_adult: true,
+      age_checked_at: new Date().toISOString(),
+      consent_at: new Date().toISOString(),
+    });
+  }
+  console.log(`[auth] demo accounts ready: ${DEMO_USERS.map((d) => `${d.role}=${d.roll}`).join(", ")}`);
 }

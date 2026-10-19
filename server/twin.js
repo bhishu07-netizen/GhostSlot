@@ -6,20 +6,18 @@
 // simulator in the database (source = 'simulated'), and every response says
 // so in `dataSource`. The ₹ figures use an assumed tariff (TWIN_TARIFF_INR_PER_KWH).
 import express from "express";
+import { canManageTwin } from "./auth.js";
 
 const TARIFF = clampNum(Number(process.env.TWIN_TARIFF_INR_PER_KWH), 1, 50, 8);
 const CACHE_MS = 60 * 1000;
 const TICK_MS = 5 * 60 * 1000;
 const BACKFILL_MAX_MS = 14 * 24 * 3600 * 1000;
 
-// Who may acknowledge/resolve facilities alerts: roll numbers listed in
-// TWIN_ADMIN_ROLLS (comma separated). Default: the judges' demo account, so
-// the demo works, while ordinary student sign-ups only get read access.
-function adminRolls() {
-  const raw = process.env.TWIN_ADMIN_ROLLS || (process.env.DEMO_ACCOUNT === "off" ? "" : (process.env.DEMO_ROLL || "23BCS10432"));
-  return new Set(raw.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean));
-}
-const canManage = (user) => !!user && adminRolls().has(String(user.roll_lower || "").toLowerCase());
+// Only facilities staff log readings and handle alerts (role on the account,
+// checked on every write). Students and faculty get read-only access.
+const canManage = (user) => canManageTwin(user);
+const SLOT_MS = 15 * 60 * 1000;
+const slotStart = (t = Date.now()) => new Date(Math.floor(t / SLOT_MS) * SLOT_MS).toISOString();
 
 function clampNum(v, lo, hi, dflt) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt; }
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -86,7 +84,7 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
     const hit = cache.get(days);
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
 
-    const [rooms, buildings, now, energy, daily, heatmap, anomalies, acks] = await Promise.all([
+    const [rooms, buildings, now, energy, daily, heatmap, anomalies, acks, manualRooms, manualWater] = await Promise.all([
       table("gs_twin_rooms", (q) => q.select("id,name,block,kind,capacity,rated_kw").order("id")),
       table("gs_twin_buildings", (q) => q.select("id,name").order("id")),
       rpc("gs_twin_now"),
@@ -95,6 +93,8 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
       rpc("gs_twin_heatmap", { p_days: days }),
       rpc("gs_twin_water_anomalies", { p_days: days, p_z: 6 }),
       table("gs_twin_alert_acks", (q) => q.select("alert_key,status,at")),
+      table("gs_twin_readings", (q) => q.select("room_id,ts,occupants,power_kw").eq("source", "manual").order("ts", { ascending: false }).limit(8)),
+      table("gs_twin_water", (q) => q.select("building_id,ts,litres").eq("source", "manual").order("ts", { ascending: false }).limit(8)),
     ]);
     const ackMap = new Map(acks.map((a) => [a.alert_key, a]));
     const roomName = new Map(rooms.map((r) => [r.id, r.name]));
@@ -146,8 +146,16 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
       .map((r) => ({ roomId: r.roomId, name: r.name, utilPct: r.classHourUtilPct,
         text: `${r.name} is used only ${r.classHourUtilPct}% of class hours. Open it as a study space, or move a small section here and free a bigger room.` }));
 
+    const manualLog = [
+      ...manualRooms.map((m) => ({ kind: "energy", targetId: m.room_id, target: roomName.get(m.room_id) || m.room_id, ts: m.ts,
+        text: `${num(m.power_kw)} kW, ${m.occupants} people` })),
+      ...manualWater.map((m) => ({ kind: "water", targetId: m.building_id, target: bName.get(m.building_id) || m.building_id, ts: m.ts,
+        text: `${num(m.litres)} L in 15 min` })),
+    ].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 8);
+
     const data = {
       dataSource: "simulated",
+      manualLog,
       generatedAt: new Date().toISOString(),
       windowDays: days,
       tariffInrPerKwh: TARIFF,
@@ -178,6 +186,49 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
       const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
       const rows = await table("gs_twin_water", (q) => q.select("ts,litres").eq("building_id", id).gte("ts", since).order("ts"));
       res.json({ buildingId: id, dataSource: "simulated", readings: rows.map((r) => ({ ts: r.ts, litres: num(r.litres) })) });
+    } catch (e) { next(e); }
+  });
+
+  // Facilities staff log a reading from a meter round or spot check. It goes
+  // into the current 15-minute slot (replacing the simulated value there),
+  // tagged source='manual' with who logged it.
+  const logLimiter = new Map();
+  router.post("/twin/readings", sameOriginOnly, requireAuth, notConfigured, async (req, res, next) => {
+    if (!canManage(req.user)) return res.status(403).json({ error: "facilities_only", message: "Only facilities staff can log readings." });
+    // At most 30 logs per staff member per 10 minutes.
+    const now = Date.now();
+    const recent = (logLimiter.get(req.user.id) || []).filter((t) => now - t < 10 * 60 * 1000);
+    if (recent.length >= 30) return res.status(429).json({ error: "rate_limited", message: "That's a lot of readings. Wait a few minutes." });
+    const b = req.body || {};
+    try {
+      const client = await sb();
+      const ts = slotStart(now);
+      if (b.kind === "energy") {
+        const roomId = String(b.roomId || "");
+        if (!/^[A-Za-z0-9-]{2,40}$/.test(roomId)) return res.status(400).json({ error: "bad_room" });
+        const rooms = await table("gs_twin_rooms", (q) => q.select("id,capacity,rated_kw").eq("id", roomId));
+        const room = rooms?.[0];
+        if (!room) return res.status(400).json({ error: "bad_room", message: "Unknown room." });
+        const powerKw = Number(b.powerKw), occupants = Number(b.occupants);
+        if (!Number.isFinite(powerKw) || powerKw < 0 || powerKw > Number(room.rated_kw) * 2) return res.status(400).json({ error: "bad_value", message: `Power must be between 0 and ${Number(room.rated_kw) * 2} kW for this room.` });
+        if (!Number.isInteger(occupants) || occupants < 0 || occupants > room.capacity * 2) return res.status(400).json({ error: "bad_value", message: `People must be a whole number between 0 and ${room.capacity * 2}.` });
+        const r = await client.from("gs_twin_readings").upsert({ room_id: roomId, ts, occupants, power_kw: Math.round(powerKw * 1000) / 1000, source: "manual", logged_by: req.user.id });
+        if (r.error) throw new Error(`[twin] log energy: ${r.error.message}`);
+      } else if (b.kind === "water") {
+        const buildingId = String(b.buildingId || "");
+        if (!/^[A-Za-z0-9-]{1,40}$/.test(buildingId)) return res.status(400).json({ error: "bad_building" });
+        const bs = await table("gs_twin_buildings", (q) => q.select("id").eq("id", buildingId));
+        if (!bs?.length) return res.status(400).json({ error: "bad_building", message: "Unknown building." });
+        const litres = Number(b.litres);
+        if (!Number.isFinite(litres) || litres < 0 || litres > 20000) return res.status(400).json({ error: "bad_value", message: "Litres must be between 0 and 20,000 for a 15-minute reading." });
+        const r = await client.from("gs_twin_water").upsert({ building_id: buildingId, ts, litres: Math.round(litres * 10) / 10, source: "manual", logged_by: req.user.id });
+        if (r.error) throw new Error(`[twin] log water: ${r.error.message}`);
+      } else {
+        return res.status(400).json({ error: "bad_kind", message: "Pick energy or water." });
+      }
+      recent.push(now); logLimiter.set(req.user.id, recent);
+      cache.clear();
+      res.status(201).json({ ok: true, ts });
     } catch (e) { next(e); }
   });
 

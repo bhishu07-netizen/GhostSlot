@@ -38,7 +38,7 @@ services:
       # Campus Twin: assumed electricity tariff for the ₹-wasted estimate.
       - key: TWIN_TARIFF_INR_PER_KWH
         value: "8"
-      # Roll numbers allowed to acknowledge/resolve twin alerts (comma separated).
-      # Leave unset to allow only the demo account.
-      - key: TWIN_ADMIN_ROLLS
-        sync: false
+      # Code facilities staff need to sign up (give it out via the estate office).
+      # Render generates a random one; see it under Environment.
+      - key: FACILITIES_ACCESS_CODE
+        generateValue: true

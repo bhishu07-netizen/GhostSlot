@@ -134,6 +134,14 @@ export function ageOn(dob, now = new Date()) {
 // Input validation helpers (allow-lists, length caps).
 // ---------------------------------------------------------------------------
 export const ROLL_RE = /^[A-Za-z0-9]{6,15}$/;
+
+// Who can have an account, and the department / team lists each role picks
+// from. Keep these in sync with src/auth/roles.js (the UI copy).
+export const ROLES = ["student", "faculty", "facilities"];
+export const DEPARTMENTS = {
+  faculty: ["CSE", "AIT-CSE", "ECE", "Mechanical", "Civil", "Applied Sciences", "Management", "Other"],
+  facilities: ["Electrical", "Plumbing", "Housekeeping", "Estate office"],
+};
 export const NAME_RE = /^[\p{L}][\p{L} .'-]{1,59}$/u;
 
 // A short list of the most common passwords (NIST SP 800-63B asks services

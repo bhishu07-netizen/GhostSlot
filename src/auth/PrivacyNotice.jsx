@@ -7,7 +7,8 @@ export const GRIEVANCE_CONTACT = "Team COGNIX (GhostSlot), Dept. of CSE, Chandig
 
 const SECTIONS = [
   ["What we collect", [
-    "Your name and student roll number.",
+    "Your name, your ID (student roll number, employee ID or staff ID) and whether you're a student, faculty member or facilities staff. Faculty and facilities also give their department or team.",
+    "If you're facilities staff and log a meter reading, we record that your account logged it.",
     "Your password, stored only as a salted scrypt hash. Nobody can read it back, including us.",
     "The fact that you passed the 18+ age check, and when.",
     "A login session cookie (httpOnly, expires after 7 days).",
@@ -23,7 +24,7 @@ const SECTIONS = [
     "Voice input uses your browser's speech recognition, which your browser provider may process.",
   ]],
   ["Why, and for how long", [
-    "Only to run your account and find you rooms.",
+    "Only to run your account, find you rooms and, for facilities staff, keep the campus energy and water records.",
     "We keep your account until you delete it. Delete it any time from You → Security & privacy, and it's gone immediately.",
   ]],
   ["Your rights", [

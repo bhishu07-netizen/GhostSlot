@@ -17,7 +17,7 @@ let proc;
 
 before(async () => {
   proc = spawn(process.execPath, [SERVER], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GEMINI_API_KEY: "", CSI_DEVICE_KEY: "dev-key-123", CSI_ADMIN_KEY: "", NODE_ENV: "test", SERVE_STATIC: "off" },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GEMINI_API_KEY: "", FACILITIES_ACCESS_CODE: "estate-code-77", CSI_DEVICE_KEY: "dev-key-123", CSI_ADMIN_KEY: "", NODE_ENV: "test", SERVE_STATIC: "off" },
     stdio: "ignore",
   });
   for (let i = 0; i < 50; i++) {
@@ -113,6 +113,44 @@ test("AI endpoints need a session; logout and delete-account work", async () => 
   assert.equal((await d("/api/auth/delete-account", { method: "POST", body: { password: "Temp-pass-2026" } })).status, 200);
   const again = await client()("/api/auth/login", { method: "POST", body: { roll: "24BCS99999", password: "Temp-pass-2026" } });
   assert.equal(again.status, 401);
+});
+
+test("roles: separate demo accounts, role-matched login, facilities sign-up needs the code", async () => {
+  const cfg = await client()("/api/auth/config");
+  assert.deepEqual(Object.keys(cfg.data.demos).sort(), ["facilities", "faculty", "student"]);
+  assert.equal(cfg.data.facilitiesSignupOpen, true);
+
+  const f = client();
+  const fac = await f("/api/auth/login", { method: "POST", body: { role: "facilities", roll: cfg.data.demos.facilities.roll, password: "Ghost-Demo-2026" } });
+  assert.equal(fac.status, 200);
+  assert.equal(fac.data.user.role, "facilities");
+  assert.equal(fac.data.user.canManageTwin, true);
+  const fy = await client()("/api/auth/login", { method: "POST", body: { role: "faculty", roll: cfg.data.demos.faculty.roll, password: "Ghost-Demo-2026" } });
+  assert.equal(fy.data.user.role, "faculty");
+  assert.equal(fy.data.user.canManageTwin, false);
+  // Right ID and password, wrong role picked → refused with the generic message.
+  const wrong = await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: cfg.data.demos.facilities.roll, password: "Ghost-Demo-2026" } });
+  assert.equal(wrong.status, 401);
+  assert.equal(wrong.data.error, "invalid_credentials");
+
+  const s = client();
+  const age = async () => (await s("/api/auth/age-check", { method: "POST", body: { dob: "1990-05-05" } })).data.ageToken;
+  const base = { name: "Sunita Devi", roll: "FMS3301", password: "Pipe-fixer-88", consent: true };
+  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", ageToken: await age() } })).status, 403);
+  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", accessCode: "guess", ageToken: await age() } })).status, 403);
+  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Rocket science", accessCode: "estate-code-77", ageToken: await age() } })).status, 400);
+  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "admin", ageToken: await age() } })).status, 400);
+  const made = await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", accessCode: "estate-code-77", ageToken: await age() } });
+  assert.equal(made.status, 201);
+  assert.equal(made.data.user.role, "facilities");
+  assert.equal(made.data.user.department, "Plumbing");
+
+  // Faculty sign-up needs a department but no code.
+  const t = client();
+  const tok = (await t("/api/auth/age-check", { method: "POST", body: { dob: "1985-02-02" } })).data.ageToken;
+  const fs = await t("/api/auth/signup", { method: "POST", body: { name: "Anil Rao", roll: "E30412", password: "Lecture-hall-9", consent: true, role: "faculty", department: "ECE", ageToken: tok } });
+  assert.equal(fs.status, 201);
+  assert.equal(fs.data.user.role, "faculty");
 });
 
 test("Wi-Fi CSI: device key required, admin endpoints off without a key", async () => {

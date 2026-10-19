@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LineChart, Line,
 } from "recharts";
-import { Zap, Droplets, Building2, AlertTriangle, CheckCircle2, RefreshCw, Info, Lightbulb } from "lucide-react";
+import { Zap, Droplets, Building2, AlertTriangle, CheckCircle2, RefreshCw, Info, Lightbulb, ClipboardPen, Eye } from "lucide-react";
 import { api } from "./api";
 
 const C = {
@@ -144,6 +144,28 @@ export default function Twin() {
         <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
         <span><b>Simulated data.</b> CU's meters and sensors aren't connected yet, so readings come from a simulator with realistic class timings, waste and leaks. ₹ uses an assumed tariff of ₹{data.tariffInrPerKwh}/kWh.</span>
       </div>
+
+      {data.canManageAlerts ? (
+        <LogReading rooms={data.rooms} buildings={data.buildings} onLogged={load} />
+      ) : (
+        <div role="note" style={{ fontSize: 11.5, color: C.sub, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
+          <Eye size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span><b style={{ color: C.text }}>View only.</b> Energy and water readings are logged, and alerts handled, by facilities staff.</span>
+        </div>
+      )}
+      {data.manualLog?.length > 0 && (
+        <Card>
+          <Title icon={ClipboardPen} sub="Readings typed in by facilities staff (replace the simulated value for that slot).">Recently logged by facilities</Title>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {data.manualLog.map((m) => (
+              <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#C9CCD3", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span>{m.kind === "water" ? "💧" : "⚡"} {m.target} · {ist(m.ts, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+                <span style={{ fontFamily: mono, fontSize: 11 }}>{m.text}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -332,6 +354,78 @@ export default function Twin() {
         </ul>
       </details>
     </div>
+  );
+}
+
+// Facilities staff only: type in a meter reading for the current 15-minute
+// slot. The server re-checks the role and the value ranges.
+function LogReading({ rooms, buildings, onLogged }) {
+  const [kind, setKind] = useState("water");
+  const [roomId, setRoomId] = useState(rooms[0]?.id || "");
+  const [buildingId, setBuildingId] = useState(buildings[0]?.id || "");
+  const [powerKw, setPowerKw] = useState("");
+  const [occupants, setOccupants] = useState("");
+  const [litres, setLitres] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const field = { background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13, minWidth: 0 };
+  const label = { fontSize: 11, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px" };
+
+  async function submit(e) {
+    e.preventDefault();
+    setMsg(null);
+    const body = kind === "water"
+      ? { kind, buildingId, litres: Number(litres) }
+      : { kind, roomId, powerKw: Number(powerKw), occupants: Number(occupants) };
+    if (kind === "water" ? litres === "" : powerKw === "" || occupants === "") { setMsg({ ok: false, text: "Fill in every field." }); return; }
+    setBusy(true);
+    try {
+      const r = await api("/twin/readings", { method: "POST", body });
+      setMsg({ ok: true, text: `Logged for the ${hhmm(r.ts)} IST slot.` });
+      setPowerKw(""); setOccupants(""); setLitres("");
+      onLogged();
+    } catch (err) { setMsg({ ok: false, text: err.message }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card>
+      <Title icon={ClipboardPen} sub="From a meter round or spot check. Goes into the current 15-minute slot and replaces the simulated value.">Log a reading</Title>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button type="button" onClick={() => setKind("water")} aria-pressed={kind === "water"} style={btn(kind === "water")}><Droplets size={13} /> Water meter</button>
+        <button type="button" onClick={() => setKind("energy")} aria-pressed={kind === "energy"} style={btn(kind === "energy")}><Zap size={13} /> Room energy</button>
+      </div>
+      <form onSubmit={submit} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+        {kind === "water" ? (
+          <>
+            <label style={label}>Building
+              <select value={buildingId} onChange={(e) => setBuildingId(e.target.value)} style={field}>
+                {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+            <label style={label}>Litres in the last 15 min
+              <input type="number" inputMode="decimal" min="0" max="20000" step="0.1" value={litres} onChange={(e) => setLitres(e.target.value)} style={field} />
+            </label>
+          </>
+        ) : (
+          <>
+            <label style={label}>Room
+              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} style={field}>
+                {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </label>
+            <label style={label}>Power now (kW)
+              <input type="number" inputMode="decimal" min="0" step="0.01" value={powerKw} onChange={(e) => setPowerKw(e.target.value)} style={field} />
+            </label>
+            <label style={label}>People inside
+              <input type="number" inputMode="numeric" min="0" step="1" value={occupants} onChange={(e) => setOccupants(e.target.value)} style={field} />
+            </label>
+          </>
+        )}
+        <button type="submit" disabled={busy} style={{ ...btn(true), padding: "8px 14px", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save reading"}</button>
+      </form>
+      {msg && <div role="status" style={{ fontSize: 12, marginTop: 8, color: msg.ok ? C.good : C.bad }}>{msg.text}</div>}
+    </Card>
   );
 }
 

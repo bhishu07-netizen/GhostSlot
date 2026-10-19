@@ -33,8 +33,9 @@ You need **Node.js 20 or newer** (`node -v` to check).
    ```
 5. Open **http://localhost:5173**
 
-**Demo login** (shown on the login screen): roll `23BCS10432`, password `Ghost-Demo-2026`
-(change it with `DEMO_PASSWORD`; it's public on purpose so judges can get in).
+**Demo logins** (shown on the login screen): student `23BCS10432`, faculty `E21045`, facilities
+`FMS2041`, all with password `Ghost-Demo-2026` (change it with `DEMO_PASSWORD`; it's public on purpose
+so judges can get in).
 
 > Login now really needs the backend. If you only run `npm run dev`, the
 > login screen will say it can't reach the server.
@@ -45,7 +46,7 @@ You need **Node.js 20 or newer** (`node -v` to check).
 |---|---|
 | `npm run setup` | Installs frontend + backend packages |
 | `npm run dev:all` | Runs backend (port 8787) + app (port 5173) |
-| `npm test` | Runs the 19 security, age-gate and twin tests |
+| `npm test` | Runs the 22 security, role, age-gate and twin tests |
 | `npm run audit` | Checks every package for known vulnerabilities |
 | `npm run build` then `npm start` | Production mode: the backend serves the built app on one origin |
 
@@ -57,6 +58,28 @@ The clock at the top follows the **real time in India (IST)** by default (green 
 on any device timezone. Change the day or time by hand to look ahead, tap **back to now** to return,
 or tap **demo time** (Mon 11:15) for the pitch, where the sample timetables tell the cleanest story.
 Classrooms show as *closed* on Sundays and outside 09:00–17:00.
+
+---
+
+## Roles: student, faculty, facilities staff
+
+Pick who you are at the top of the login and sign-up screens. The server checks the
+role on every request, so hiding a button is never the only protection.
+
+| | Student | Faculty | Facilities staff |
+|---|---|---|---|
+| Logs in with | Roll number | Employee ID | Staff ID |
+| Sign-up asks for | Name, roll number | Name, employee ID, department | Name, staff ID, team, **facilities access code** |
+| Find / book rooms | ✅ | ✅ | ✅ |
+| Campus Twin | View only | View only | View, **log energy & water readings**, acknowledge/resolve alerts |
+
+- **Facilities sign-up needs `FACILITIES_ACCESS_CODE`** (from the estate office). Without it set,
+  facilities sign-up is closed, so nobody can just pick "facilities" and change campus data.
+- A login must match the role picked: a facilities ID won't work from the Student screen.
+- **Demo accounts** (password `Ghost-Demo-2026` for all, shown on the login screen with a *Fill demo* button):
+  student `23BCS10432`, faculty `E21045`, facilities `FMS2041`.
+- Facilities readings go into the current 15-minute slot, replace the simulated value there and are
+  tagged `source = 'manual'` with who logged them (`logged_by`).
 
 ---
 
@@ -117,7 +140,8 @@ to signed-in users only.
 | **Classroom utilisation** | Heatmap of how often each room is used, per weekday hour |
 | **Energy waste** | A slot is wasted when nobody is inside but the room draws over 25% of its rated load. Shown in kWh and ₹ (tariff in `TWIN_TARIFF_INR_PER_KWH`, default ₹8/kWh, an assumption) |
 | **Water anomalies** | Robust z-score against the median + MAD for the same building, hour and weekday/weekend. Above 6 = flagged; back-to-back readings become one episode |
-| **Alerts** | Rooms wasting power now + water episodes. Facilities accounts (roll numbers in `TWIN_ADMIN_ROLLS`, default: the demo account) can *Acknowledge* or *Mark resolved*; other students see them read-only |
+| **Alerts** | Rooms wasting power now + water episodes. Facilities staff can *Acknowledge* or *Mark resolved*; students and faculty see them read-only |
+| **Log a reading** | Facilities staff only: type in a water-meter or room-energy reading |
 | **Use what's already built** | Rooms used under 30% of class hours get a reallocation suggestion |
 
 > **Data honesty:** CU's meters aren't connected yet. `gs_twin_generate()` simulates
@@ -127,7 +151,7 @@ to signed-in users only.
 from the last stored reading, so there are no gaps in the history.
 > Real sensor rows go in the same tables with `source = 'sensor'`.
 
-**Setup:** run migrations `0001` to `0004` in the Supabase SQL editor (in order),
+**Setup:** run migrations `0001` to `0005` in the Supabase SQL editor (in order),
 then set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Without them the Twin tab
 says it isn't connected; the rest of the app still works.
 

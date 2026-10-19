@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   User as UserIcon, Contact2, Lock, Eye, EyeOff, ShieldCheck, CalendarDays, ServerCog,
-  EyeOff as NoEye, Scale, CheckCircle2, ArrowLeft, ArrowRight, LockKeyhole, Loader2,
+  EyeOff as NoEye, Scale, CheckCircle2, ArrowLeft, ArrowRight, LockKeyhole, Loader2, Building2, KeyRound,
 } from "lucide-react";
+import { ROLE_META, ROLE_ORDER } from "./roles";
 import { api } from "../api";
 import { BrandMark, Wordmark } from "../brand/BrandMark";
 import PrivacyNotice from "./PrivacyNotice";
@@ -35,7 +36,7 @@ function pwChecks(pw, roll, name) {
   return [
     { ok: pw.length >= 8, label: "8+ characters" },
     { ok: pw.length > 0 && !COMMON.includes(lower), label: "Not a common password" },
-    { ok: pw.length > 0 && !(roll && lower.includes(roll.toLowerCase())) && !(first.length >= 3 && lower.includes(first)), label: "No name or roll number" },
+    { ok: pw.length > 0 && !(roll && lower.includes(roll.toLowerCase())) && !(first.length >= 3 && lower.includes(first)), label: "No name or ID inside" },
     { ok: /[a-z]/i.test(pw) && /[^a-z]/i.test(pw), label: "Mix letters with numbers or symbols" },
   ];
 }
@@ -77,6 +78,27 @@ function Stepper({ step }) {
           </React.Fragment>
         );
       })}
+    </div>
+  );
+}
+
+function RolePicker({ role, setRole }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.5, color: C.sub, marginBottom: 6 }}>I AM</div>
+      <div role="radiogroup" aria-label="Account type" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+        {ROLE_ORDER.map((id) => {
+          const m = ROLE_META[id]; const Icon = m.icon; const on = role === id;
+          return (
+            <button key={id} role="radio" aria-checked={on} onClick={() => setRole(id)}
+              style={{ background: on ? "rgba(255,255,255,0.09)" : C.card, border: `1px solid ${on ? "rgba(211,215,223,0.45)" : C.line}`, borderRadius: 12, padding: "10px 6px",
+                color: on ? C.text : C.sub, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700 }}>
+              <Icon size={16} color={on ? C.silver : C.muted} />{m.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 6, textAlign: "center" }}>{ROLE_META[role].can}</div>
     </div>
   );
 }
@@ -188,7 +210,7 @@ function AgeBlocked({ until, onDone }) {
         </div>
         <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>We can't create an account for you yet</div>
         <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginTop: 8 }}>
-          GhostSlot accounts are for students aged <b style={{ color: C.text }}>18 and over</b>. Under India's Digital Personal Data Protection Act, 2023, we'd need verified consent from a parent or guardian to handle a younger student's data, and GhostSlot doesn't collect that.
+          GhostSlot accounts are for people aged <b style={{ color: C.text }}>18 and over</b>. Under India's Digital Personal Data Protection Act, 2023, we'd need verified consent from a parent or guardian to handle a younger person's data, and GhostSlot doesn't collect that.
         </div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, fontSize: 11.5, color: C.green, background: "rgba(61,220,151,0.10)", border: "1px solid rgba(61,220,151,0.25)", borderRadius: 999, padding: "5px 10px" }}>
           <CheckCircle2 size={12} /> Nothing you entered was saved
@@ -203,6 +225,11 @@ function AgeBlocked({ until, onDone }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AuthScreen({ onAuthed }) {
   const [mode, setMode] = useState("login");
+  const [role, setRoleState] = useState("student");
+  const [department, setDepartment] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const meta = ROLE_META[role];
+  const setRole = (r) => { setRoleState(r); setDepartment(""); setAccessCode(""); setError(""); if (mode === "signup") setStep(1); };
   const [step, setStep] = useState(1);
   const [showPass, setShowPass] = useState(false);
   const [roll, setRoll] = useState("");
@@ -230,10 +257,10 @@ export default function AuthScreen({ onAuthed }) {
 
   async function login() {
     setError("");
-    if (!roll.trim() || !pass) { setError("Enter your roll number and password."); return; }
+    if (!roll.trim() || !pass) { setError(`Enter your ${meta.idLabel} and password.`); return; }
     setBusy(true);
     try {
-      const { user } = await api("/auth/login", { method: "POST", body: { roll: roll.trim(), password: pass } });
+      const { user } = await api("/auth/login", { method: "POST", body: { role, roll: roll.trim(), password: pass } });
       onAuthed(user, "login");
     } catch (e) {
       setError(e.message);
@@ -243,7 +270,9 @@ export default function AuthScreen({ onAuthed }) {
   function nextFromDetails() {
     setError("");
     if (!NAME_RE.test(name.trim())) { setError("You do have a name, right? Letters only, 2–60 characters."); return; }
-    if (!ROLL_RE.test(roll.trim())) { setError("That roll number looks made up. 6–15 letters/numbers, like 23BCS10432."); return; }
+    if (!ROLL_RE.test(roll.trim())) { setError(`That ${meta.idLabel} looks made up. 6–15 letters/numbers, like ${meta.idExample}.`); return; }
+    if (meta.departments && !meta.departments.includes(department)) { setError(`Pick your ${meta.deptLabel.toLowerCase()}.`); return; }
+    if (role === "facilities" && !accessCode.trim()) { setError("Enter the facilities access code from the estate office."); return; }
     setStep(2);
   }
 
@@ -257,12 +286,12 @@ export default function AuthScreen({ onAuthed }) {
     if (!consent) { setError("Please read and accept the privacy notice."); return; }
     setBusy(true);
     try {
-      const { user } = await api("/auth/signup", { method: "POST", body: { name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
+      const { user } = await api("/auth/signup", { method: "POST", body: { role, department: meta.departments ? department : undefined, accessCode: role === "facilities" ? accessCode.trim() : undefined, name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
       onAuthed(user, "signup");
     } catch (e) {
       if (e.code === "age_check_required") { setAgeToken(null); setStep(2); }
       if (e.code === "age_gate_locked") { setBlockedUntil(Date.now()); }
-      if (e.code === "roll_taken" || e.code === "invalid_roll" || e.code === "invalid_name") setStep(1);
+      if (["roll_taken", "invalid_roll", "invalid_name", "invalid_department", "bad_access_code", "facilities_signup_closed", "invalid_role"].includes(e.code)) setStep(1);
       setError(e.message);
     } finally { setBusy(false); }
   }
@@ -283,7 +312,7 @@ export default function AuthScreen({ onAuthed }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 24 }}>
           <BrandMark size={64} glow />
           <div style={{ marginTop: 12 }}><Wordmark size={28} /></div>
-          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, textAlign: "center" }}>Students only. Faculty, security guards, and random uncles need not apply.</div>
+          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, textAlign: "center" }}>For CU students, faculty and facilities staff. Random uncles still need not apply.</div>
         </div>
 
         <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 18, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 4 }}>
@@ -292,20 +321,28 @@ export default function AuthScreen({ onAuthed }) {
           ))}
         </div>
 
+        {!(mode === "signup" && blocked) && !(mode === "signup" && step > 1) && <div style={{ marginBottom: 14 }}><RolePicker role={role} setRole={setRole} /></div>}
+
         {mode === "login" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Field icon={Contact2}><input autoComplete="username" value={roll} onChange={(e) => setRoll(e.target.value)} placeholder="student roll number" style={inputStyle} maxLength={15} /></Field>
+            <Field icon={Contact2}><input aria-label={meta.idLabel} autoComplete="username" value={roll} onChange={(e) => setRoll(e.target.value)} placeholder={`${meta.idLabel} (e.g. ${meta.idExample})`} style={inputStyle} maxLength={15} /></Field>
             <Field icon={Lock}>
               <input autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && login()} type={showPass ? "text" : "password"} placeholder="password" style={{ ...inputStyle, paddingRight: 38 }} maxLength={128} />
               <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 10, top: 11, background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
             </Field>
             <ErrorBox>{error}</ErrorBox>
             <button onClick={login} disabled={busy} style={{ ...silverBtn, marginTop: 4, opacity: busy ? 0.7 : 1 }}>{busy ? <Loader2 size={15} className="gs-spin" /> : null} Log in</button>
-            {config?.demo && (
-              <div style={{ fontSize: 11, color: "#4A4E57", textAlign: "center", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
-                demo login → roll: {config.demo.roll} · pass: {config.demo.password}
-              </div>
-            )}
+            {(config?.demos?.[role] || (role === "student" && config?.demo)) && (() => {
+              const d = config.demos?.[role] || config.demo;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: "#6B6F79", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {meta.label.toLowerCase()} demo → {d.roll} · {d.password}
+                  </div>
+                  <button type="button" onClick={() => { setRoll(d.roll); setPass(d.password); }} style={{ background: "none", border: `1px solid ${C.line2}`, color: C.sub, borderRadius: 999, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>Fill {meta.label.toLowerCase()} demo</button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -317,7 +354,25 @@ export default function AuthScreen({ onAuthed }) {
             {step === 1 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <Field icon={UserIcon}><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="full name" style={inputStyle} maxLength={60} /></Field>
-                <Field icon={Contact2}><input autoComplete="username" value={roll} onChange={(e) => setRoll(e.target.value)} onKeyDown={(e) => e.key === "Enter" && nextFromDetails()} placeholder="student roll number" style={inputStyle} maxLength={15} /></Field>
+                <Field icon={Contact2}><input aria-label={meta.idLabel} autoComplete="username" value={roll} onChange={(e) => setRoll(e.target.value)} onKeyDown={(e) => e.key === "Enter" && nextFromDetails()} placeholder={`${meta.idLabel} (e.g. ${meta.idExample})`} style={inputStyle} maxLength={15} /></Field>
+                {meta.departments && (
+                  <Field icon={Building2}>
+                    <select aria-label={meta.deptLabel} value={department} onChange={(e) => setDepartment(e.target.value)} style={{ ...selectStyle, width: "100%", paddingLeft: 36 }}>
+                      <option value="">{meta.deptLabel}</option>
+                      {meta.departments.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </Field>
+                )}
+                {role === "facilities" && (config && !config.facilitiesSignupOpen ? (
+                  <div style={{ fontSize: 12, color: C.amber, background: "rgba(245,181,68,0.08)", border: "1px solid rgba(245,181,68,0.25)", borderRadius: 10, padding: "8px 10px" }}>
+                    Facilities sign-up is closed right now. Ask the estate office to set up your account, or use the facilities demo on the Login tab.
+                  </div>
+                ) : (
+                  <>
+                    <Field icon={KeyRound}><input aria-label="Facilities access code" autoComplete="off" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="facilities access code (from the estate office)" style={inputStyle} maxLength={64} /></Field>
+                    <div style={{ fontSize: 11, color: C.muted }}>Facilities accounts can change campus data, so they need a code from the estate office.</div>
+                  </>
+                ))}
                 <ErrorBox>{error}</ErrorBox>
                 <button onClick={nextFromDetails} style={{ ...silverBtn, marginTop: 4 }}>Continue <ArrowRight size={15} /></button>
               </div>
@@ -349,7 +404,7 @@ export default function AuthScreen({ onAuthed }) {
                 </div>
                 <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: C.sub, lineHeight: 1.45, marginTop: 4, cursor: "pointer" }}>
                   <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2, accentColor: "#D3D7DF" }} />
-                  <span>I've read the <button type="button" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, color: C.text, textDecoration: "underline", cursor: "pointer", fontSize: 12.5 }}>privacy notice</button> and agree to GhostSlot using my name and roll number to run my account.</span>
+                  <span>I've read the <button type="button" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, color: C.text, textDecoration: "underline", cursor: "pointer", fontSize: 12.5 }}>privacy notice</button> and agree to GhostSlot using my name, {meta.idLabel}{meta.departments ? ` and ${meta.deptLabel.toLowerCase()}` : ""} to run my account.</span>
                 </label>
                 <ErrorBox>{error}</ErrorBox>
                 <button onClick={createAccount} disabled={busy} style={{ ...silverBtn, marginTop: 4, opacity: busy ? 0.7 : 1 }}>{busy ? <Loader2 size={15} className="gs-spin" /> : null} Create account</button>

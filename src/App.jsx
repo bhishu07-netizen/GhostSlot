@@ -14,6 +14,7 @@ import {
 import CampusAI from "./CampusAI";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
+import { ROLE_META } from "./auth/roles";
 import { BrandMark, Wordmark } from "./brand/BrandMark";
 import { api } from "./api";
 import CampusMap from "./CampusMap";
@@ -1277,7 +1278,7 @@ export default function GhostSlot() {
         </nav>
         <div style={{ padding: "14px 20px", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F5F7" }}>{currentUser.name}</div>
-          <div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll}</div>
+          <div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>
             <button onClick={() => handleLogout()} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}><LogOut size={11} /> logout</button>
@@ -1695,7 +1696,8 @@ export default function GhostSlot() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 17 }}>{currentUser.name}</div>
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{currentUser.roll}</div>
+              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}{currentUser.department ? ` · ${currentUser.department}` : ""}</div>
+              <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 3 }}>{ROLE_META[currentUser.role]?.can}</div>
             </div>
             <button onClick={() => handleLogout()} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 5, color: "#FF8B8B", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               <LogOut size={13} /> logout
@@ -1747,7 +1749,7 @@ export default function GhostSlot() {
               <button onClick={() => setShowPrivacy(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Info size={13} /> Privacy notice</button>
               {!currentUser.isDemo && <button onClick={() => { setDeleteOpen((o) => !o); setDeleteErr(""); }} style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#FF8B8B", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Delete my account</button>}
             </div>
-            {currentUser.isDemo && <div style={{ fontSize: 11.5, color: "#8B8F99" }}>This is the shared judges' demo account, so <i>Sign out everywhere</i> and <i>Delete my account</i> are switched off. Sign up to try them.</div>}
+            {currentUser.isDemo && <div style={{ fontSize: 11.5, color: "#8B8F99" }}>This is a shared judges' demo account, so <i>Sign out everywhere</i> and <i>Delete my account</i> are switched off. Sign up to try them.</div>}
             {deleteOpen && !currentUser.isDemo && (
               <div style={{ background: "rgba(255,107,107,0.06)", border: "1px solid rgba(255,107,107,0.2)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: 12.5, color: "#C9CCD3" }}>This permanently deletes your account and signs you out on every device. Enter your password to confirm.</div>

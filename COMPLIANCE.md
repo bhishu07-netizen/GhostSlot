@@ -15,7 +15,7 @@ These are the six checks Team COGNIX applies to every project, plus India's DPDP
 
 - **Children (s.9):** anyone under 18 is a child, and processing their data needs verifiable parental consent. GhostSlot doesn't collect parental consent, so it **doesn't create accounts for under-18s**. That's what the age gate enforces.
 - **Notice and consent (s.5–6):** a plain-language privacy notice is shown at signup, and the student must tick to agree. It's always reachable from the login screen and the You tab.
-- **Data minimisation (s.6, s.8):** only name, roll number, password hash, an "18+ verified" flag and timestamps are kept. No birth date, location or contacts.
+- **Data minimisation (s.6, s.8):** only name, ID (roll number / employee ID / staff ID), role, department or team (faculty and facilities), password hash, an "18+ verified" flag and timestamps are kept. No birth date, location or contacts.
 - **Erasure (s.12):** *Delete my account* in the You tab removes the account and every session immediately.
 - **Security safeguards (s.8(5)):** see [SECURITY.md](SECURITY.md).
 - **Campus Twin:** stores room-level counts and meter readings only, never who was in a room. No personal data is added.
