@@ -232,6 +232,35 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
     } catch (e) { next(e); }
   });
 
+  // A facilities staff member's own work in the last 30 days, for their
+  // profile: readings they logged and alerts they handled. Only their own
+  // rows, never anyone else's.
+  router.get("/twin/me", requireAuth, notConfigured, async (req, res, next) => {
+    if (!canManage(req.user)) return res.status(403).json({ error: "facilities_only", message: "Only facilities staff have a work log." });
+    try {
+      const me = req.user.id;
+      const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const [energy, water, acks] = await Promise.all([
+        table("gs_twin_readings", (q) => q.select("ts,logged_by").eq("logged_by", me).gte("ts", since).limit(2000)),
+        table("gs_twin_water", (q) => q.select("ts,logged_by").eq("logged_by", me).gte("ts", since).limit(2000)),
+        table("gs_twin_alert_acks", (q) => q.select("status,at,user_id").eq("user_id", me).gte("at", since).limit(2000)),
+      ]);
+      // Filter again here so a mistake in a query can never leak someone else's count.
+      const mine = (rows, col) => (rows || []).filter((r) => r[col] === me);
+      const e = mine(energy, "logged_by"), w = mine(water, "logged_by"), a = mine(acks, "user_id");
+      const times = [...e.map((r) => r.ts), ...w.map((r) => r.ts), ...a.map((r) => r.at)].sort();
+      res.json({
+        days: 30,
+        readingsLogged: e.length + w.length,
+        energyReadings: e.length,
+        waterReadings: w.length,
+        alertsResolved: a.filter((r) => r.status === "resolved").length,
+        alertsAcknowledged: a.filter((r) => r.status === "acknowledged").length,
+        lastActionAt: times[times.length - 1] || null,
+      });
+    } catch (e) { next(e); }
+  });
+
   // Facilities marks an alert as acknowledged or resolved.
   router.post("/twin/alerts/ack", sameOriginOnly, requireAuth, notConfigured, async (req, res, next) => {
     if (!canManage(req.user)) return res.status(403).json({ error: "facilities_only", message: "Only facilities staff can update alerts." });

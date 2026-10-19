@@ -151,3 +151,28 @@ test("without Supabase configured the twin says so instead of failing", async ()
   assert.equal((await res.json()).error, "twin_not_configured");
   s.close();
 });
+
+test("staff work log counts only the signed-in staff member's own rows", async () => {
+  const recent = new Date(Date.now() - 3600 * 1000).toISOString();
+  data.gs_twin_readings = [
+    { room_id: "A1-105", ts: recent, occupants: 0, power_kw: 2, logged_by: "u1" },
+    { room_id: "A1-105", ts: recent, occupants: 0, power_kw: 2, logged_by: "someone-else" },
+  ];
+  data.gs_twin_water = [{ building_id: "A1", ts: recent, litres: 50, logged_by: "u1" }];
+  data.gs_twin_alert_acks = [
+    { alert_key: "water:A1:x", status: "resolved", at: recent, user_id: "u1" },
+    { alert_key: "water:A1:y", status: "acknowledged", at: recent, user_id: "u1" },
+    { alert_key: "water:A1:z", status: "resolved", at: recent, user_id: "someone-else" },
+  ];
+  const as = (who) => fetch(base + "/twin/me", { headers: { "x-test-user": who } });
+  assert.equal((await fetch(base + "/twin/me")).status, 401);
+  assert.equal((await as("student")).status, 403);
+  assert.equal((await as("faculty")).status, 403);
+  const me = await (await as("facilities")).json();
+  assert.equal(me.readingsLogged, 2);
+  assert.equal(me.energyReadings, 1);
+  assert.equal(me.waterReadings, 1);
+  assert.equal(me.alertsResolved, 1);
+  assert.equal(me.alertsAcknowledged, 1);
+  assert.equal(me.lastActionAt, recent);
+});

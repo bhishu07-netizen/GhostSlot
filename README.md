@@ -70,8 +70,15 @@ role on every request, so hiding a button is never the only protection.
 |---|---|---|---|
 | Logs in with | Roll number | Employee ID | Staff ID |
 | Sign-up asks for | Name, roll number | Name, employee ID, department | Name, staff ID, team, **facilities access code** |
-| Find / book rooms | ✅ | ✅ | ✅ |
+| Home screen | **Find**: AI room search, best match, book | **My classes**: today's teaching + book a room for an extra class | **Operations**: alerts to fix, rooms wasting power, log readings |
+| Tabs | Find, Map, Timetable, Predict, Campus, Squad, You | My classes, Map, Timetable (my teaching), Campus, Profile | Operations, Map, Analytics, Profile |
+| Book rooms | ✅ | ✅ (extra/make-up classes, smallest room that fits) | ❌ |
 | Campus Twin | View only | View only | View, **log energy & water readings**, acknowledge/resolve alerts |
+| Profile | Room karma, badges | Department, classes a week, extra classes booked | Own work log: alerts resolved/acknowledged, readings logged (30 days) |
+| CampusAI chat | ✅ | ✅ | — |
+
+The **map is shared by everyone**. The three-step strip at the top changes per role
+(Search → Match → Book · Check → Find → Book · Spot → Fix → Log).
 
 - **Facilities sign-up needs `FACILITIES_ACCESS_CODE`** (from the estate office). Without it set,
   facilities sign-up is closed, so nobody can just pick "facilities" and change campus data.
@@ -80,6 +87,8 @@ role on every request, so hiding a button is never the only protection.
   student `23BCS10432`, faculty `E21045`, facilities `FMS2041`.
 - Facilities readings go into the current 15-minute slot, replace the simulated value there and are
   tagged `source = 'manual'` with who logged them (`logged_by`).
+- `GET /api/twin/me` (facilities only) returns the signed-in staff member's own counts for their profile;
+  it never returns anyone else's rows.
 
 ---
 

@@ -173,17 +173,17 @@ function SpaceDetail({ item, booking, csi, onShowInFind, onBook }) {
         {room.sensing === "csi" && csi && <span style={{ color: "#C9CCD3" }}>· {csi.state}{csi.mode === "simulation" ? " (simulation)" : ""}</span>}
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {room.bookable && (
+        {room.bookable && onBook && (
           <button onClick={() => canBook && onBook(room, status)} disabled={!canBook} style={{ background: canBook ? "linear-gradient(180deg, #ECEEF2, #B9BEC9)" : "rgba(255,255,255,0.06)", color: canBook ? "#08090B" : "#6B6F79", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 700, fontSize: 13, cursor: canBook ? "pointer" : "not-allowed" }}>
             {booking ? (booking.roomId === room.id ? "Booked by you" : "End current booking first") : status.free ? "Lock it in" : "Not free right now"}
           </button>
         )}
-        {!room.bookable && (
+        {!room.bookable && onBook && (
           <span style={{ fontSize: 12, color: "#8B8F99", padding: "9px 0" }}>Walk in · no booking needed</span>
         )}
-        <button onClick={() => onShowInFind(room)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+        {onShowInFind && <button onClick={() => onShowInFind(room)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
           <Search size={13} /> Similar places in Find
-        </button>
+        </button>}
       </div>
     </div>
   );

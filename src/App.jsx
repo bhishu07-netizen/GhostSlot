@@ -6,7 +6,7 @@ import {
   CheckCircle2, Radar, Flame, MessageCircleMore, CalendarClock, Plus, Trash2,
   LogOut, Upload, Download, FileWarning,
   Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
-  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity,
+  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Cell
@@ -14,11 +14,14 @@ import {
 import CampusAI from "./CampusAI";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
-import { ROLE_META } from "./auth/roles";
+import { ROLE_META, ROLE_NOTIFS } from "./auth/roles";
 import { BrandMark, Wordmark } from "./brand/BrandMark";
 import { api } from "./api";
 import CampusMap from "./CampusMap";
 import Twin from "./Twin";
+import FacultyHome from "./roles/FacultyHome";
+import OpsHome from "./roles/OpsHome";
+import { StaffWorkLog } from "./roles/StaffWorkLog";
 import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } from "./campus";
 
 // =========================================================================
@@ -94,6 +97,38 @@ const SEED_MY_SLOTS_MON = [
   { id: "m3", day: "Mon", start: "13:00", end: "14:00", subject: "OOPs" },
 ];
 const SEED_MY_SLOTS = everyWeekday(SEED_MY_SLOTS_MON);
+// Demo faculty's teaching timetable: the same classes the room timetables
+// above already show, so "my classes" and room status agree.
+const SEED_TEACHING_SLOTS = everyWeekday([
+  { id: "t1", day: "Mon", start: "09:00", end: "10:30", subject: "DBMS · A2 · 104" },
+  { id: "t2", day: "Mon", start: "12:00", end: "13:00", subject: "OS Lab · A2 · 104" },
+  { id: "t3", day: "Mon", start: "15:00", end: "16:00", subject: "AI Lab · CSE Lab 9" },
+]);
+// Each role gets its own app: first tab is its home.
+const ROLE_TABS = {
+  student: [
+    { id: "find", label: "Find", icon: Search },
+    { id: "map", label: "Map", icon: MapIcon },
+    { id: "timetable", label: "Timetable", icon: CalendarClock },
+    { id: "predict", label: "Predict", icon: TrendingUp },
+    { id: "twin", label: "Campus", icon: Activity },
+    { id: "squad", label: "Squad", icon: MessageCircleMore },
+    { id: "profile", label: "You", icon: Trophy },
+  ],
+  faculty: [
+    { id: "classes", label: "My classes", icon: BookOpen },
+    { id: "map", label: "Map", icon: MapIcon },
+    { id: "timetable", label: "Timetable", icon: CalendarClock },
+    { id: "twin", label: "Campus", icon: Activity },
+    { id: "profile", label: "Profile", icon: UserRound },
+  ],
+  facilities: [
+    { id: "ops", label: "Operations", icon: Wrench },
+    { id: "map", label: "Map", icon: MapIcon },
+    { id: "twin", label: "Analytics", icon: Activity },
+    { id: "profile", label: "Profile", icon: UserRound },
+  ],
+};
 
 const SQUAD = [
   { name: "Ishaan", init: "IS", free: "free till 1:40", slot: "same as you" },
@@ -101,11 +136,6 @@ const SQUAD = [
   { name: "Devansh", init: "DV", free: "free in 20 min", slot: "next period" },
 ];
 
-const NOTIFS = [
-  { id: 1, text: "Lab 9 just ghosted its 11am class. It's yours if you want it.", time: "2m ago" },
-  { id: 2, text: "You left A2·104 with 40 min still on the clock. Bold of you.", time: "1h ago" },
-  { id: 3, text: "D Block LT-3 is about to get feral at 1pm. Book elsewhere.", time: "3h ago" },
-];
 
 const vibeMeta = {
   silent: { icon: VolumeX, label: "silent zone", color: "#C9CDD6" },
@@ -812,6 +842,7 @@ export default function GhostSlot() {
   const [matchMyFreeTime, setMatchMyFreeTime] = useState(false);
   const [booking, setBooking] = useState(null); // { roomId, slotId, roomName, secondsLeft }
   const [karma, setKarma] = useState(74);
+  const [extraBooked, setExtraBooked] = useState(0);
   const [pinged, setPinged] = useState({});
   const [showNotifs, setShowNotifs] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -826,6 +857,18 @@ export default function GhostSlot() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePw, setDeletePw] = useState("");
   const [deleteErr, setDeleteErr] = useState("");
+  const role = ROLE_TABS[currentUser?.role] ? currentUser.role : "student";
+  const isStudent = role === "student";
+  const showKarma = isStudent && !currentUser?.isMinor;
+  // When someone signs in (or a session is restored), open their role's home
+  // and load the matching demo timetable (classes taken vs classes taught).
+  useEffect(() => {
+    if (!currentUser) return;
+    setTab(ROLE_TABS[role][0].id);
+    setMySlots(role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS);
+    setTtSubTab("mine");
+    setShowNotifs(false);
+  }, [currentUser?.id, role]);
 
   // Restore an existing session (httpOnly cookie) and check if AI is on.
   useEffect(() => {
@@ -1029,20 +1072,23 @@ export default function GhostSlot() {
     setPrefs((p) => ({ ...p, requirements: p.requirements.includes(tag) ? p.requirements.filter((r) => r !== tag) : [...p.requirements, tag] }));
   }
 
-  function handleBook(room, status) {
-    const duration = Math.max(15, Math.min(prefs.duration || 30, status.freeFor));
+  function handleBook(room, status, wanted, subject) {
+    if (role === "facilities") return; // facilities staff don't book rooms
+    const duration = Math.max(15, Math.min(wanted || prefs.duration || 30, status.freeFor));
     const endMin = nowMin + duration;
     const slotId = `book_${Date.now()}`;
-    setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: "Reserved (you)" }] }));
+    const label = role === "faculty" ? `${subject || "Extra class"} (you)` : "Reserved (you)";
+    setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: label }] }));
     setBooking({ roomId: room.id, slotId, roomName: room.name, secondsLeft: duration * 60 });
-    setToast(`${room.name} is yours for ${fmtMin(duration)}. Don't ghost it.`);
+    if (role === "faculty") setExtraBooked((n) => n + 1);
+    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}.` : `${room.name} is yours for ${fmtMin(duration)}. Don't ghost it.`);
   }
   function endEarly() {
     if (!booking) return;
     setRoomSlots((rs) => ({ ...rs, [booking.roomId]: (rs[booking.roomId] || []).filter((s) => s.id !== booking.slotId) }));
-    setKarma((k) => k + 5);
     setBooking(null);
-    setToast("Ended early. +5 room karma — the campus thanks you.");
+    if (isStudent) { setKarma((k) => k + 5); setToast("Ended early. +5 room karma — the campus thanks you."); }
+    else setToast("Room released early. It's back on the map for everyone.");
   }
   function ping(person) { setPinged((p) => ({ ...p, [person]: true })); setToast(`${person} has been pinged. No cap, they'll probably see it eventually.`); }
 
@@ -1157,17 +1203,22 @@ export default function GhostSlot() {
 
   function handleAuthed(u, how) {
     setCurrentUser(u);
-    setToast(how === "signup" ? `Account made, ${u.name}. Onboarding complete, gatekeeping complete.` : `Welcome back, ${u.name}. Try not to ghost your bookings this time.`);
+    const r = u.role || "student";
+    setToast(how === "signup"
+      ? `Account made, ${u.name}. Welcome to GhostSlot.`
+      : r === "student" ? `Welcome back, ${u.name}. Try not to ghost your bookings this time.`
+      : r === "faculty" ? `Welcome back, ${u.name}. Here's your teaching day.`
+      : `Welcome back, ${u.name}. Here's what needs fixing.`);
   }
   async function handleLogout(everywhere = false) {
     try { await api(everywhere ? "/auth/logout-all" : "/auth/logout", { method: "POST" }); } catch { /* session already gone */ }
-    setCurrentUser(null); setTab("find"); setBooking(null);
+    setCurrentUser(null); setBooking(null);
   }
   async function deleteAccount() {
     setDeleteErr("");
     try {
       await api("/auth/delete-account", { method: "POST", body: { password: deletePw } });
-      setDeletePw(""); setDeleteOpen(false); setCurrentUser(null); setTab("find"); setBooking(null);
+      setDeletePw(""); setDeleteOpen(false); setCurrentUser(null); setBooking(null);
     } catch (e) { setDeleteErr(e.message); }
   }
 
@@ -1205,6 +1256,7 @@ export default function GhostSlot() {
   function handleViewSpaceFromAI(roomId) {
     const match = ROOM_META.find((r) => r.id === roomId);
     if (!match) return;
+    if (!isStudent) { setTab("map"); return; }
     setTab("find");
     setShowFilters(false);
     setPrefs((p) => ({ ...DEFAULT_PREFS, location: match.block, sortBy: p.sortBy }));
@@ -1222,15 +1274,10 @@ export default function GhostSlot() {
   }
 
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  const navItems = [
-    { id: "find", label: "Find", icon: Search },
-    { id: "map", label: "Map", icon: MapIcon },
-    { id: "timetable", label: "Timetable", icon: CalendarClock },
-    { id: "predict", label: "Predict", icon: TrendingUp },
-    { id: "twin", label: "Twin", icon: Activity },
-    { id: "squad", label: "Squad", icon: MessageCircleMore },
-    { id: "profile", label: "You", icon: Trophy },
-  ];
+  const navItems = ROLE_TABS[role];
+  // A tab from another role (e.g. left over from a previous login) falls back to home.
+  const view = navItems.some((n) => n.id === tab) ? tab : navItems[0].id;
+  const roleMeta = ROLE_META[role];
 
   return (
     <div className="gs-root" style={{ fontFamily: "'Inter', sans-serif", background: "#060607", minHeight: "100vh", color: "#F4F5F7" }}>
@@ -1270,7 +1317,7 @@ export default function GhostSlot() {
           <div style={{ fontSize: 10.5, color: "#4A4E57" }}>campus space intelligence</div>
         </div>
         <nav style={{ padding: "14px 12px", flex: 1 }}>
-          {navItems.map(n => { const Icon = n.icon; const active = tab === n.id; return (
+          {navItems.map(n => { const Icon = n.icon; const active = view === n.id; return (
             <button key={n.id} onClick={() => setTab(n.id)} style={{ width: "100%", background: active ? "rgba(211,215,223,0.15)" : "none", border: active ? "1px solid rgba(211,215,223,0.25)" : "1px solid transparent", borderRadius: 10, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, color: active ? "#E6E8EC" : "#6B6F79", marginBottom: 4, textAlign: "left", transition: "all 150ms" }}>
               <Icon size={17} /><span style={{ fontWeight: 600, fontSize: 13.5 }}>{n.label}</span>
             </button>
@@ -1280,7 +1327,7 @@ export default function GhostSlot() {
           <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F5F7" }}>{currentUser.name}</div>
           <div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
+            {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => handleLogout()} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}><LogOut size={11} /> logout</button>
           </div>
         </div>
@@ -1290,12 +1337,12 @@ export default function GhostSlot() {
       {/* desktop topbar */}
       <div className="gs-desktop-topbar">
         <div>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 20 }}>{navItems.find(n => n.id === tab)?.label}</div>
-          <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 2 }}>AI-powered campus space intelligence · CU</div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 20 }}>{navItems.find(n => n.id === view)?.label}</div>
+          <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 2 }}>{roleMeta.tagline}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TimeDayPicker {...pickerProps} />
-          {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
+          {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
           <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
             <Bell size={16} color="#F4F5F7" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
           </button>
@@ -1309,16 +1356,16 @@ export default function GhostSlot() {
             <Wordmark size={20} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
+            {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
               <Bell size={16} color="#F4F5F7" />
               <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
             </button>
           </div>
         </div>
-        <div style={{ fontSize: 12.5, color: "#8B8F99", marginTop: 6, marginBottom: 8 }}>AI-powered campus space intelligence — not just a room directory.</div>
+        <div style={{ fontSize: 12.5, color: "#8B8F99", marginTop: 6, marginBottom: 8 }}>{roleMeta.tagline}</div>
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {[["Search", "tell us what you need"], ["Match", "AI finds the best space"], ["Optimize", "CU spots unused capacity"]].map(([t, sub], i) => (
+          {roleMeta.steps.map(([t, sub], i) => (
             <div key={t} style={{ flex: 1, background: "#101114", borderRadius: 10, padding: "6px 8px", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#E6E8EC" }}>{i + 1}. {t}</div>
               <div style={{ fontSize: 9.5, color: "#6B6F79" }}>{sub}</div>
@@ -1330,7 +1377,7 @@ export default function GhostSlot() {
 
       {showNotifs && (
         <div style={{ margin: "0 18px 10px", background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-          {NOTIFS.map((n) => (
+          {(ROLE_NOTIFS[role] || ROLE_NOTIFS.student).map((n) => (
             <div key={n.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               <Sparkles size={13} color="#E6E8EC" style={{ marginTop: 2, flexShrink: 0 }} />
               <div><div style={{ fontSize: 13, lineHeight: 1.4 }}>{n.text}</div><div style={{ fontSize: 10.5, color: "#6B6F79", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{n.time}</div></div>
@@ -1353,7 +1400,7 @@ export default function GhostSlot() {
       )}
 
       <div className="gs-tab-wrap">
-      {tab === "find" && (
+      {view === "find" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <GhostSlotInfo />
 
@@ -1539,30 +1586,30 @@ export default function GhostSlot() {
         </div>
       )}
 
-      {tab === "map" && (
+      {view === "map" && (
         <div style={{ padding: "0 18px" }}>
           <CampusMap
             rooms={roomsWithStatus}
             booking={booking}
             csi={csiStatus}
-            onBook={handleBook}
-            onShowInFind={(room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, category: room.category, sortBy: p.sortBy })); }}
+            onBook={role === "facilities" ? undefined : handleBook}
+            onShowInFind={isStudent ? (room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, category: room.category, sortBy: p.sortBy })); } : undefined}
           />
         </div>
       )}
 
-      {tab === "timetable" && (
+      {view === "timetable" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setTtSubTab("mine")} style={{ flex: 1, background: ttSubTab === "mine" ? "#D3D7DF" : "#101114", color: ttSubTab === "mine" ? "#08090B" : "#8B8F99", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>My timetable</button>
+            <button onClick={() => setTtSubTab("mine")} style={{ flex: 1, background: ttSubTab === "mine" ? "#D3D7DF" : "#101114", color: ttSubTab === "mine" ? "#08090B" : "#8B8F99", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{role === "faculty" ? "My teaching" : "My timetable"}</button>
             <button onClick={() => setTtSubTab("rooms")} style={{ flex: 1, background: ttSubTab === "rooms" ? "#D3D7DF" : "#101114", color: ttSubTab === "rooms" ? "#08090B" : "#8B8F99", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Room timetables</button>
           </div>
 
           {ttSubTab === "mine" && (
             <>
-              <div style={{ fontSize: 12.5, color: "#8B8F99" }}>Feed it your classes so it stops guessing when you're actually free.</div>
+              <div style={{ fontSize: 12.5, color: "#8B8F99" }}>{role === "faculty" ? "The classes you teach. GhostSlot warns you when an extra class would clash." : "Feed it your classes so it stops guessing when you're actually free."}</div>
               <CsvImport
-                label="Bulk import your timetable"
+                label={role === "faculty" ? "Bulk import your teaching timetable" : "Bulk import your timetable"}
                 hint="CSV columns: day, start, end, subject. Times as HH:MM, 24-hour."
                 onFile={importMyCSV}
                 onTemplate={() => downloadTemplate("mine")}
@@ -1618,7 +1665,7 @@ export default function GhostSlot() {
         </div>
       )}
 
-      {tab === "predict" && (
+      {view === "predict" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>AI-assisted shortage forecast</div>
@@ -1672,9 +1719,17 @@ export default function GhostSlot() {
         </div>
       )}
 
-      {tab === "twin" && <Twin />}
+      {view === "twin" && <Twin showLog={role !== "facilities"} />}
 
-      {tab === "squad" && (
+      {view === "classes" && (
+        <FacultyHome user={currentUser} day={day} time={time} mySlots={mySlots} rooms={roomsWithStatus} booking={booking}
+          onBook={(room, duration, subject) => { const st = roomsWithStatus.find((x) => x.room.id === room.id)?.status; if (st?.free) handleBook(room, st, duration, subject); }}
+          onOpenTimetable={() => { setTab("timetable"); setTtSubTab("mine"); }} />
+      )}
+
+      {view === "ops" && <OpsHome user={currentUser} onOpenAnalytics={() => setTab("twin")} />}
+
+      {view === "squad" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 12.5, color: "#8B8F99" }}>People in your batch who are also free right now, allegedly.</div>
           {SQUAD.map((s) => (
@@ -1691,7 +1746,7 @@ export default function GhostSlot() {
         </div>
       )}
 
-      {tab === "profile" && (
+      {view === "profile" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
@@ -1703,7 +1758,18 @@ export default function GhostSlot() {
               <LogOut size={13} /> logout
             </button>
           </div>
-          {currentUser.isMinor ? (
+          {role === "faculty" && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {[[currentUser.department || "—", "department"], [mySlots.length, "classes a week on your timetable"], [extraBooked, "extra classes booked this session"]].map(([v, l]) => (
+                <div key={l} style={{ flex: "1 1 120px", background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{v}</div>
+                  <div style={{ fontSize: 11, color: "#8B8F99" }}>{l}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {role === "facilities" && <StaffWorkLog department={currentUser.department} />}
+          {!isStudent ? null : currentUser.isMinor ? (
             <div style={{ background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: "#8B8F99", lineHeight: 1.5 }}>
               Room karma, badges and booking-behaviour stats are switched off for under-18 accounts. India's DPDP Act doesn't allow behavioural tracking of children. Everything else works the same.
             </div>
@@ -1781,13 +1847,13 @@ export default function GhostSlot() {
 
       </div>{/* end gs-main */}
 
-      <CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} />
+      {role !== "facilities" && <CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} />}
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
 
       <nav className="gs-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "#0E0F12", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", padding: "10px 4px 14px", zIndex: 10 }}>
         {navItems.map((n) => {
           const Icon = n.icon;
-          const active = tab === n.id;
+          const active = view === n.id;
           return (
             <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: active ? "#E6E8EC" : "#6B6F79" }}>
               <Icon size={18} />

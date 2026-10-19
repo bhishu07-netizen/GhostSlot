@@ -9,7 +9,7 @@ import {
 import { Zap, Droplets, Building2, AlertTriangle, CheckCircle2, RefreshCw, Info, Lightbulb, ClipboardPen, Eye } from "lucide-react";
 import { api } from "./api";
 
-const C = {
+export const C = {
   card: "#101114", border: "rgba(255,255,255,0.07)", text: "#F4F5F7", sub: "#8B8F99", muted: "#6B6F79",
   silver: "#D3D7DF", good: "#3DDC97", warn: "#F5B544", bad: "#FF6B6B", blue: "#5B9BEA",
 };
@@ -18,17 +18,17 @@ const STATE = {
   free: { color: C.good, label: "Free" },
   wasting: { color: C.bad, label: "Empty but powered" },
 };
-const mono = "'JetBrains Mono', monospace";
-const head = "'Space Grotesk', sans-serif";
-const ist = (ts, opts) => new Date(ts).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", ...opts });
-const hhmm = (ts) => ist(ts, { hour: "2-digit", minute: "2-digit", hour12: false });
+export const mono = "'JetBrains Mono', monospace";
+export const head = "'Space Grotesk', sans-serif";
+export const ist = (ts, opts) => new Date(ts).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", ...opts });
+export const hhmm = (ts) => ist(ts, { hour: "2-digit", minute: "2-digit", hour12: false });
 const dayLabel = (d) => new Date(d + "T00:00:00+05:30").toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
-const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+export const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
 
-function Card({ children, style }) {
+export function Card({ children, style }) {
   return <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 14, ...style }}>{children}</div>;
 }
-function Title({ icon: Icon, children, sub }) {
+export function Title({ icon: Icon, children, sub }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontFamily: head, fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
@@ -38,7 +38,7 @@ function Title({ icon: Icon, children, sub }) {
     </div>
   );
 }
-function Stat({ value, label, tone }) {
+export function Stat({ value, label, tone }) {
   return (
     <Card style={{ flex: "1 1 140px", padding: 12 }}>
       <div style={{ fontFamily: head, fontWeight: 700, fontSize: 22, color: tone || C.text }}>{value}</div>
@@ -48,7 +48,7 @@ function Stat({ value, label, tone }) {
 }
 const tooltipStyle = { background: "#060607", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 12 };
 
-export default function Twin() {
+export default function Twin({ showLog = true }) {
   const [days, setDays] = useState(7);
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -146,26 +146,14 @@ export default function Twin() {
       </div>
 
       {data.canManageAlerts ? (
-        <LogReading rooms={data.rooms} buildings={data.buildings} onLogged={load} />
+        showLog && <LogReading rooms={data.rooms} buildings={data.buildings} onLogged={load} />
       ) : (
         <div role="note" style={{ fontSize: 11.5, color: C.sub, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
           <Eye size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           <span><b style={{ color: C.text }}>View only.</b> Energy and water readings are logged, and alerts handled, by facilities staff.</span>
         </div>
       )}
-      {data.manualLog?.length > 0 && (
-        <Card>
-          <Title icon={ClipboardPen} sub="Readings typed in by facilities staff (replace the simulated value for that slot).">Recently logged by facilities</Title>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {data.manualLog.map((m) => (
-              <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#C9CCD3", display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span>{m.kind === "water" ? "💧" : "⚡"} {m.target} · {ist(m.ts, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
-                <span style={{ fontFamily: mono, fontSize: 11 }}>{m.text}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      {showLog && <ManualLog items={data.manualLog} />}
 
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -213,28 +201,7 @@ export default function Twin() {
       {/* Alerts */}
       <Card>
         <Title icon={AlertTriangle} sub={`${openAlerts.length} open · ${data.canManageAlerts ? "you can acknowledge or resolve each one (facilities access)." : "facilities staff acknowledge and resolve these."}`}>Alerts</Title>
-        {data.alerts.length === 0 && <div style={{ fontSize: 12.5, color: C.sub }}>Nothing needs attention right now.</div>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {data.alerts.map((a) => {
-            const tone = a.severity === "critical" ? C.bad : C.warn;
-            const Icon = a.kind === "water_anomaly" ? Droplets : Zap;
-            return (
-              <div key={a.key} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: `1px solid ${a.status === "open" ? tone + "55" : C.border}`, opacity: a.status === "resolved" ? 0.55 : 1 }}>
-                <Icon size={16} color={tone} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title} <span style={{ fontSize: 10.5, color: tone, fontFamily: mono }}>{a.severity.toUpperCase()}</span></div>
-                  <div style={{ fontSize: 12, color: "#C9CCD3", marginTop: 2 }}>{a.detail}</div>
-                  <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-                    {data.canManageAlerts && a.status === "open" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}
-                    {data.canManageAlerts && a.status !== "resolved" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "resolved")} style={btn()}>Mark resolved</button>}
-                    {a.status !== "open" && <span style={{ fontSize: 11, color: C.good, display: "flex", gap: 4, alignItems: "center" }}><CheckCircle2 size={12} /> {a.status}</span>}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <AlertList alerts={data.alerts} canManage={data.canManageAlerts} busyKey={busyKey} onAck={ack} />
       </Card>
 
       {/* Utilisation heatmap */}
@@ -359,7 +326,7 @@ export default function Twin() {
 
 // Facilities staff only: type in a meter reading for the current 15-minute
 // slot. The server re-checks the role and the value ranges.
-function LogReading({ rooms, buildings, onLogged }) {
+export function LogReading({ rooms, buildings, onLogged }) {
   const [kind, setKind] = useState("water");
   const [roomId, setRoomId] = useState(rooms[0]?.id || "");
   const [buildingId, setBuildingId] = useState(buildings[0]?.id || "");
@@ -429,10 +396,56 @@ function LogReading({ rooms, buildings, onLogged }) {
   );
 }
 
-function btn(active = false) {
+export function btn(active = false) {
   return {
     background: active ? "rgba(211,215,223,0.15)" : "rgba(255,255,255,0.04)", color: active ? "#E6E8EC" : "#C9CCD3",
     border: `1px solid ${active ? "rgba(211,215,223,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 9, padding: "5px 10px",
     fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, marginTop: 0,
   };
+}
+
+// Readings typed in by facilities staff.
+export function ManualLog({ items }) {
+  if (!items?.length) return null;
+  return (
+    <Card>
+      <Title icon={ClipboardPen} sub="Readings typed in by facilities staff (replace the simulated value for that slot).">Recently logged by facilities</Title>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map((m) => (
+          <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#C9CCD3", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span>{m.kind === "water" ? "💧" : "⚡"} {m.target} · {ist(m.ts, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+            <span style={{ fontFamily: mono, fontSize: 11 }}>{m.text}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// Alert rows. Buttons only for facilities (the server checks the role again).
+export function AlertList({ alerts, canManage, busyKey, onAck, empty = "Nothing needs attention right now." }) {
+  if (!alerts.length) return <div style={{ fontSize: 12.5, color: C.sub }}>{empty}</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {alerts.map((a) => {
+        const tone = a.severity === "critical" ? C.bad : C.warn;
+        const Icon = a.kind === "water_anomaly" ? Droplets : Zap;
+        return (
+          <div key={a.key} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: `1px solid ${a.status === "open" ? tone + "55" : C.border}`, opacity: a.status === "resolved" ? 0.55 : 1 }}>
+            <Icon size={16} color={tone} style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title} <span style={{ fontSize: 10.5, color: tone, fontFamily: mono }}>{a.severity.toUpperCase()}</span></div>
+              <div style={{ fontSize: 12, color: "#C9CCD3", marginTop: 2 }}>{a.detail}</div>
+              <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+                {canManage && a.status === "open" && <button disabled={busyKey === a.key} onClick={() => onAck(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}
+                {canManage && a.status !== "resolved" && <button disabled={busyKey === a.key} onClick={() => onAck(a.key, "resolved")} style={btn()}>Mark resolved</button>}
+                {a.status !== "open" && <span style={{ fontSize: 11, color: C.good, display: "flex", gap: 4, alignItems: "center" }}><CheckCircle2 size={12} /> {a.status}</span>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
