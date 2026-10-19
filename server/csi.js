@@ -226,6 +226,8 @@ function publicStatus() {
     mode: state.mode, // "hardware" | "simulation" — UI must always show this
     state: state.csiState,
     calibrationStatus: state.calibrationStatus,
+    // Readings collected toward the current baseline (resets on recalibrate).
+    calibrationProgress: state.baselineSamples.length,
     baseline: state.baseline ? { mean: round2(state.baseline.mean), std: round2(state.baseline.std) } : null,
     samplesCollected: state.samplesCollected,
     lastCsiUpdate: state.lastCsiUpdate ? state.lastCsiUpdate.toISOString() : null,

@@ -40,7 +40,7 @@ struct RoomStatus {
   String state = "?";        // CALIBRATING / NORMAL / CHANGE_DETECTED / OFFLINE / UNKNOWN
   String mode = "?";         // hardware / simulation
   String calibration = "?";
-  int samples = 0;
+  int calProgress = 0;     // readings toward the baseline
   int ageSec = -1;
   bool nodeA = false, nodeB = false;
   int baselineWindow = 15;
@@ -90,7 +90,7 @@ static void showStatus(const RoomStatus &s) {
   oled.setFont(u8g2_font_6x10_tf);
   char line[32];
   if (s.state == "CALIBRATING") {
-    snprintf(line, sizeof line, "keep room empty %d/%d", s.samples > s.baselineWindow ? s.baselineWindow : s.samples, s.baselineWindow);
+    snprintf(line, sizeof line, "keep room empty %d/%d", s.calProgress > s.baselineWindow ? s.baselineWindow : s.calProgress, s.baselineWindow);
   } else if (s.ageSec >= 0) {
     snprintf(line, sizeof line, "updated %ds ago", s.ageSec);
   } else {
@@ -139,7 +139,7 @@ static RoomStatus fetchStatus() {
       s.state = doc["state"] | "?";
       s.mode = doc["mode"] | "?";
       s.calibration = doc["calibrationStatus"] | "?";
-      s.samples = doc["samplesCollected"] | 0;
+      s.calProgress = doc["calibrationProgress"] | 0;
       s.ageSec = doc["secondsSinceUpdate"].isNull() ? -1 : (int)(doc["secondsSinceUpdate"] | -1);
       s.nodeA = doc["devices"]["node-a"]["online"] | false;
       s.nodeB = doc["devices"]["node-b"]["online"] | false;
@@ -170,8 +170,8 @@ void loop() {
     lastPoll = millis();
     RoomStatus s = fetchStatus();
     if (s.ok) {
-      Serial.printf("[status] %s mode=%s cal=%s samples=%d TX=%d RX=%d\n", s.state.c_str(), s.mode.c_str(),
-                    s.calibration.c_str(), s.samples, s.nodeA, s.nodeB);
+      Serial.printf("[status] %s mode=%s cal=%s %d/%d TX=%d RX=%d\n", s.state.c_str(), s.mode.c_str(),
+                    s.calibration.c_str(), s.calProgress, s.baselineWindow, s.nodeA, s.nodeB);
       showStatus(s);
     } else {
       Serial.printf("[status] request failed: %d %s\n", s.httpCode, HTTPClient::errorToString(s.httpCode).c_str());
