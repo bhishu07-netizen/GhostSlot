@@ -24,6 +24,19 @@ import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } fro
 // CONSTANTS
 // =========================================================================
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const PICKER_DAYS = [...DAYS, "Sun"];
+// The demo story (seed timetables) is tuned for this moment.
+const DEMO_DAY = "Mon";
+const DEMO_TIME = "11:15";
+
+// Current day + time on India's clock, whatever the viewer's device timezone.
+function nowIST() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return { day: get("weekday"), time: `${get("hour")}:${get("minute")}` };
+}
 const CAMPUS_START = "09:00";
 const CAMPUS_END = "17:00";
 
@@ -58,7 +71,12 @@ const TIMETABLE_ROOMS = ROOM_META.filter((r) => r.sensing !== "wifi");
 // seed data tuned so the default demo (Mon, 11:15) tells a clean story:
 // student is free 11:00-13:00 -> CSE Lab 9 is wide open (best), A2-104 only
 // has 45 real minutes left (worse), Library Pod 4 is open but far + small.
-const SEED_ROOM_SLOTS = {
+// Demo timetables repeat every weekday so the app tells the same story in
+// live mode on any day, not just on Mondays.
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const everyWeekday = (slots) => slots.flatMap((s) => WEEKDAYS.map((d) => ({ ...s, id: d === "Mon" ? s.id : `${s.id}-${d}`, day: d })));
+
+const SEED_ROOM_SLOTS_MON = {
   "A2-104": [{ id: "s1", day: "Mon", start: "09:00", end: "10:30", subject: "DBMS" }, { id: "s2", day: "Mon", start: "12:00", end: "13:00", subject: "OS Lab" }],
   "D-Block-LT3": [{ id: "s3", day: "Mon", start: "10:30", end: "13:00", subject: "Mechanics" }],
   "CSE-Lab-9": [{ id: "s4", day: "Mon", start: "15:00", end: "16:00", subject: "AI Lab" }],
@@ -67,12 +85,14 @@ const SEED_ROOM_SLOTS = {
   "D-Block-210": [{ id: "s7", day: "Mon", start: "13:00", end: "14:30", subject: "COA" }],
   "demo-room": [],
 };
+const SEED_ROOM_SLOTS = Object.fromEntries(Object.entries(SEED_ROOM_SLOTS_MON).map(([k, v]) => [k, everyWeekday(v)]));
 
-const SEED_MY_SLOTS = [
+const SEED_MY_SLOTS_MON = [
   { id: "m1", day: "Mon", start: "09:00", end: "10:00", subject: "DSA" },
   { id: "m2", day: "Mon", start: "10:00", end: "11:00", subject: "DBMS" },
   { id: "m3", day: "Mon", start: "13:00", end: "14:00", subject: "OOPs" },
 ];
+const SEED_MY_SLOTS = everyWeekday(SEED_MY_SLOTS_MON);
 
 const SQUAD = [
   { name: "Ishaan", init: "IS", free: "free till 1:40", slot: "same as you" },
@@ -150,6 +170,13 @@ function freeWindows(slots, day) {
 }
 // status of a room at a given minute on a given day
 function roomStatus(slots, day, nowMin) {
+  // Teaching blocks are shut on Sundays and outside campus hours.
+  const open = toMin(CAMPUS_START), close = toMin(CAMPUS_END);
+  if (day === "Sun" || nowMin >= close) {
+    const nextDay = day === "Sat" || day === "Sun" ? "Mon" : "tomorrow";
+    return { free: false, closed: true, busyUntil: `${CAMPUS_START} ${nextDay}`, freeFor: 0 };
+  }
+  if (nowMin < open) return { free: false, closed: true, busyUntil: CAMPUS_START, freeFor: 0 };
   const busy = busyIntervals(slots, day);
   const current = busy.find(([s, e]) => nowMin >= s && nowMin < e);
   if (current) return { free: false, busyUntil: toHHMM(current[1]) };
@@ -377,6 +404,7 @@ function statusMeta(room, status, prefs, booking) {
     const c = crowdLabel(status.crowd);
     return { tone: c.tone, label: `${c.label} · ${status.crowd}% full` };
   }
+  if (status.closed) return { tone: "coral", label: `closed · opens ${status.busyUntil}` };
   if (!status.free) return { tone: "coral", label: `occupied · free at ${status.busyUntil}` };
   const requestedDuration = prefs?.duration || 30;
   if (status.freeFor < requestedDuration) return { tone: "amber", label: `only ${fmtMin(status.freeFor)} available` };
@@ -463,22 +491,31 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
           border: "none", borderRadius: 12, padding: "10px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14,
           cursor: canBook ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         }}>
-          {!status.free ? "occupied right now" : hasActiveBooking ? "end current booking first" : <>Lock it in <ChevronRight size={15} /></>}
+          {status.closed ? "closed right now" : !status.free ? "occupied right now" : hasActiveBooking ? "end current booking first" : <>Lock it in <ChevronRight size={15} /></>}
         </button>
       )}
     </div>
   );
 }
 
-function TimeDayPicker({ day, setDay, time, setTime }) {
+function TimeDayPicker({ day, setDay, time, setTime, live, onLive, onDemo }) {
+  const ctl = { background: "transparent", color: "#F4F5F7", border: "none", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" };
+  const chip = (active) => ({ background: active ? "rgba(61,220,151,0.14)" : "rgba(255,255,255,0.05)", color: active ? "#3DDC97" : "#C9CDD6",
+    border: `1px solid ${active ? "rgba(61,220,151,0.35)" : "rgba(255,255,255,0.12)"}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, cursor: "pointer", whiteSpace: "nowrap" });
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "8px 10px" }}>
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "8px 10px" }}>
       <CalendarClock size={14} color="#8B8F99" />
-      <select value={day} onChange={(e) => setDay(e.target.value)} style={{ background: "transparent", color: "#F4F5F7", border: "none", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" }}>
-        {DAYS.map((d) => <option key={d} value={d} style={{ background: "#101114" }}>{d}</option>)}
+      <select aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)} style={ctl}>
+        {PICKER_DAYS.map((d) => <option key={d} value={d} style={{ background: "#101114" }}>{d}</option>)}
       </select>
       <span style={{ color: "#2A2D35" }}>|</span>
-      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ background: "transparent", color: "#F4F5F7", border: "none", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" }} />
+      <input aria-label="Time" type="time" value={time} onChange={(e) => e.target.value && setTime(e.target.value)} style={ctl} />
+      {live
+        ? <span title="Following the real time in India" style={chip(true)}>● live IST</span>
+        : <button onClick={onLive} title="Go back to the real time in India" style={chip(false)}>back to now</button>}
+      {!(day === DEMO_DAY && time === DEMO_TIME && !live) && (
+        <button onClick={onDemo} title="Jump to the time the demo data is set up for" style={chip(false)}>demo time</button>
+      )}
     </div>
   );
 }
@@ -795,8 +832,26 @@ export default function GhostSlot() {
     api("/ai/status").then((r) => setAiConfigured(!!r.configured)).catch(() => setAiConfigured(false));
   }, []);
 
-  const [day, setDay] = useState("Mon");
-  const [time, setTime] = useState("11:15");
+  // Day/time follow the real IST clock until the user picks one by hand.
+  const [clock, setClock] = useState(() => ({ live: true, ...nowIST() }));
+  useEffect(() => {
+    if (!clock.live) return;
+    const tick = () => setClock((c) => {
+      if (!c.live) return c;
+      const n = nowIST();
+      return n.day === c.day && n.time === c.time ? c : { live: true, ...n };
+    });
+    tick();
+    const t = setInterval(tick, 15 * 1000);
+    return () => clearInterval(t);
+  }, [clock.live]);
+  const day = clock.day;
+  const time = clock.time;
+  const setDay = (d) => setClock((c) => ({ ...c, live: false, day: d }));
+  const setTime = (t) => setClock((c) => ({ ...c, live: false, time: t }));
+  const goLive = () => setClock({ live: true, ...nowIST() });
+  const goDemo = () => setClock({ live: false, day: DEMO_DAY, time: DEMO_TIME });
+  const pickerProps = { day, setDay, time, setTime, live: clock.live, onLive: goLive, onDemo: goDemo };
   const [mySlots, setMySlots] = useState(SEED_MY_SLOTS);
   const [roomSlots, setRoomSlots] = useState(SEED_ROOM_SLOTS);
   const [ttSubTab, setTtSubTab] = useState("mine");
@@ -1238,7 +1293,7 @@ export default function GhostSlot() {
           <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 2 }}>AI-powered campus space intelligence · CU</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <TimeDayPicker day={day} setDay={setDay} time={time} setTime={setTime} />
+          <TimeDayPicker {...pickerProps} />
           <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>
           <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
             <Bell size={16} color="#F4F5F7" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
@@ -1269,7 +1324,7 @@ export default function GhostSlot() {
             </div>
           ))}
         </div>
-        <TimeDayPicker day={day} setDay={setDay} time={time} setTime={setTime} />
+        <TimeDayPicker {...pickerProps} />
       </div>{/* end gs-mobile-topbar */}
 
       {showNotifs && (
@@ -1433,7 +1488,7 @@ export default function GhostSlot() {
               </div>
               {closestOptions.map(({ room, status, score }) => (
                 <div key={room.id} style={{ background: "#16171B", borderRadius: 12, padding: 10, fontSize: 12, color: "#C9CCD3" }}>
-                  <b>{room.name}</b> — {score}% match, {status.free ? `free for ${fmtMin(status.freeFor)}` : `busy until ${status.busyUntil}`}, {room.walk}
+                  <b>{room.name}</b> — {score}% match, {status.free ? `free for ${fmtMin(status.freeFor)}` : status.closed ? `closed until ${status.busyUntil}` : `busy until ${status.busyUntil}`}, {room.walk}
                 </div>
               ))}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1463,7 +1518,7 @@ export default function GhostSlot() {
                   <div key={room.id} style={{ background: "#101114", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{room.name}</div>
-                      <div style={{ fontSize: 11, color: "#6B6F79" }}>{room.sensing === "wifi" ? statusMeta(room, status, prefs, null).label : status.free ? `free ${fmtMin(status.freeFor)}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
+                      <div style={{ fontSize: 11, color: "#6B6F79" }}>{room.sensing === "wifi" ? statusMeta(room, status, prefs, null).label : status.free ? `free ${fmtMin(status.freeFor)}` : status.closed ? `closed till ${status.busyUntil}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
                     </div>
                     <Pill tone="lime">{score}%</Pill>
                   </div>
