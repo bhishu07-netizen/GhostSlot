@@ -28,6 +28,8 @@ const AGE_LOCK_COOKIE = IS_PROD ? "__Host-gs_agegate" : "gs_agegate";
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 const AGE_TOKEN_TTL_MS = 20 * 60 * 1000;
 const AGE_LOCK_MS = 24 * 3600 * 1000;
+const PENDING_MINOR_TTL_MS = 48 * 3600 * 1000;
+const GUARDIAN_RELATIONS = ["Parent", "Legal guardian"];
 
 const baseCookie = { httpOnly: true, secure: IS_PROD, sameSite: "strict", path: "/" };
 
@@ -65,6 +67,8 @@ export function publicUser(u, extra = {}) {
     department: u.department || null,
     canManageTwin: canManageTwin(u),
     ageVerified: !!u.age_verified_adult,
+    isMinor: !!u.is_minor,
+    guardian: u.is_minor ? { name: u.guardian_name, relation: u.guardian_relation, consentAt: u.guardian_consent_at } : null,
     ageCheckedAt: u.age_checked_at,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
@@ -155,6 +159,14 @@ export function buildAuth(store) {
     if (age < 0) return res.status(400).json({ error: "invalid_dob", message: "That date is in the future." });
     if (age > 100) return res.status(400).json({ error: "invalid_dob", message: "Please check the year you picked." });
 
+    // Under-18 STUDENTS can join with a parent/guardian's verifiable consent
+    // (DPDP Act s.9). Faculty and facilities accounts stay 18+ only.
+    const role = req.body?.role === undefined ? "student" : req.body.role;
+    if (age < MIN_AGE && role === "student" && age >= 10) {
+      const now = Date.now();
+      const ageToken = signPayload({ kind: "age", adult: false, minor: true, iat: now, exp: now + AGE_TOKEN_TTL_MS, n: crypto.randomBytes(12).toString("base64url") });
+      return res.json({ ok: true, minor: true, ageToken, expiresAt: now + AGE_TOKEN_TTL_MS });
+    }
     if (age < MIN_AGE) {
       const until = Date.now() + AGE_LOCK_MS;
       res.cookie(AGE_LOCK_COOKIE, signPayload({ kind: "agelock", exp: until }), { ...baseCookie, maxAge: AGE_LOCK_MS });
@@ -172,13 +184,15 @@ export function buildAuth(store) {
       if (ageLockInfo(req).locked) return res.status(403).json({ error: "age_gate_locked" });
 
       const age = verifyPayload(req.body?.ageToken);
-      if (!age || age.kind !== "age" || age.adult !== true) {
+      const isMinor = !!age && age.kind === "age" && age.adult === false && age.minor === true;
+      if (!age || age.kind !== "age" || (age.adult !== true && !isMinor)) {
         return res.status(403).json({ error: "age_check_required", message: "Please complete the age check again." });
       }
       if (spentAgeNonces.has(age.n)) return res.status(403).json({ error: "age_check_required", message: "Please complete the age check again." });
 
       const role = req.body?.role === undefined ? "student" : req.body.role;
       if (!ROLES.includes(role)) return res.status(400).json({ error: "invalid_role", message: "Pick student, faculty or facilities staff." });
+      if (isMinor && role !== "student") return res.status(403).json({ error: "age_check_required", message: "Faculty and facilities accounts are for adults only." });
       let department = null;
       if (role !== "student") {
         department = cleanText(req.body?.department, 40);
@@ -198,6 +212,23 @@ export function buildAuth(store) {
       const pwErr = passwordProblem(password, { roll, name });
       if (pwErr) return res.status(400).json({ error: "weak_password", message: pwErr });
       if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required", message: "Please accept the privacy notice to continue." });
+
+      // Under 18: nothing becomes an account until a parent/guardian approves.
+      // The sign-up waits (password already hashed) for 48 h, then is deleted.
+      if (isMinor) {
+        if (await store.findUserByRoll(roll.toLowerCase())) {
+          return res.status(409).json({ error: "roll_taken", message: "That ID already has an account. Try logging in." });
+        }
+        spentAgeNonces.set(age.n, age.exp);
+        const code = newToken();
+        const expiresAt = new Date(Date.now() + PENDING_MINOR_TTL_MS).toISOString();
+        await store.createPendingMinor({
+          code_hash: sha256(code), roll, roll_lower: roll.toLowerCase(), name,
+          password_hash: await hashPassword(password),
+          age_checked_at: new Date(age.iat).toISOString(), consent_at: new Date().toISOString(), expires_at: expiresAt,
+        });
+        return res.status(202).json({ pending: true, guardianPath: `/guardian#${code}`, expiresAt });
+      }
 
       spentAgeNonces.set(age.n, age.exp);
       let user;
@@ -248,6 +279,76 @@ export function buildAuth(store) {
       await store.setLastLogin(user.id);
       const sessions = await store.countSessionsForUser(user.id);
       return res.json({ user: publicUser({ ...user, last_login_at: new Date().toISOString() }, { activeSessions: sessions }) });
+    } catch (err) { next(err); }
+  });
+
+  // ---- parent / guardian consent for under-18 students ---------------------
+  const guardianLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false,
+    handler: json429("Too many tries. Wait 15 minutes.") });
+  const codeHashOf = (c) => (typeof c === "string" && /^[A-Za-z0-9_-]{30,60}$/.test(c) ? sha256(c) : null);
+
+  // What the guardian sees before deciding. Shows only the child's name and ID.
+  router.post("/guardian/lookup", guardianLimiter, async (req, res, next) => {
+    try {
+      const h = codeHashOf(req.body?.code);
+      if (!h) return res.status(404).json({ error: "not_found", message: "This consent link isn't valid or has expired." });
+      const pending = await store.getPendingMinor(h);
+      if (pending) return res.json({ status: "pending", child: { name: pending.name, roll: pending.roll }, expiresAt: pending.expires_at });
+      const user = await store.findUserByGuardianHash(h);
+      if (user) return res.json({ status: "approved", child: { name: user.name, roll: user.roll }, consentAt: user.guardian_consent_at });
+      return res.status(404).json({ error: "not_found", message: "This consent link isn't valid or has expired." });
+    } catch (err) { next(err); }
+  });
+
+  // The guardian approves: they confirm they're an adult (their date of birth
+  // is checked once and discarded, DPDP Rules r.10), give their name and
+  // relation, and consent. Only then is the student's account created.
+  router.post("/guardian/approve", guardianLimiter, async (req, res, next) => {
+    try {
+      const h = codeHashOf(req.body?.code);
+      const pending = h ? await store.getPendingMinor(h) : null;
+      if (!pending) return res.status(404).json({ error: "not_found", message: "This consent link isn't valid or has expired." });
+      const guardianName = cleanText(req.body?.guardianName, 60);
+      if (!NAME_RE.test(guardianName)) return res.status(400).json({ error: "invalid_name", message: "Enter your full name (letters only)." });
+      if (guardianName.toLowerCase() === String(pending.name).toLowerCase()) return res.status(400).json({ error: "invalid_name", message: "The parent or guardian has to approve this, not the student." });
+      const relation = req.body?.relation;
+      if (!GUARDIAN_RELATIONS.includes(relation)) return res.status(400).json({ error: "invalid_relation", message: "Pick parent or legal guardian." });
+      const dob = String(req.body?.dob || "");
+      const gAge = parseDob(dob) ? ageOn(dob) : null;
+      if (gAge === null || gAge < 0 || gAge > 110) return res.status(400).json({ error: "invalid_dob", message: "Check your date of birth." });
+      if (gAge < MIN_AGE) return res.status(403).json({ error: "guardian_not_adult", message: "Only an adult parent or guardian can give consent." });
+      if (req.body?.consent !== true) return res.status(400).json({ error: "consent_required", message: "Please tick the consent box to approve." });
+
+      let user;
+      try {
+        user = await store.createUser({
+          roll: pending.roll, roll_lower: pending.roll_lower, name: pending.name, role: "student", department: null,
+          password_hash: pending.password_hash,
+          age_verified_adult: false, is_minor: true, age_checked_at: pending.age_checked_at, consent_at: pending.consent_at,
+          guardian_name: guardianName, guardian_relation: relation, guardian_consent_at: new Date().toISOString(), guardian_token_hash: h,
+        });
+      } catch (err) {
+        if (err instanceof DuplicateError) { await store.deletePendingMinor(h); return res.status(409).json({ error: "roll_taken", message: "This ID already has an account." }); }
+        throw err;
+      }
+      await store.deletePendingMinor(h);
+      return res.json({ ok: true, child: { name: user.name, roll: user.roll } });
+    } catch (err) { next(err); }
+  });
+
+  // The guardian can refuse a pending request, or withdraw consent later
+  // (deletes the student's account and every session immediately).
+  router.post("/guardian/withdraw", guardianLimiter, async (req, res, next) => {
+    try {
+      const h = codeHashOf(req.body?.code);
+      if (!h) return res.status(404).json({ error: "not_found", message: "This consent link isn't valid or has expired." });
+      if (req.body?.confirm !== true) return res.status(400).json({ error: "confirm_required" });
+      const pending = await store.getPendingMinor(h);
+      if (pending) { await store.deletePendingMinor(h); return res.json({ ok: true, deleted: "request" }); }
+      const user = await store.findUserByGuardianHash(h);
+      if (!user) return res.status(404).json({ error: "not_found", message: "This consent link isn't valid or has expired." });
+      await store.deleteUser(user.id);
+      return res.json({ ok: true, deleted: "account" });
     } catch (err) { next(err); }
   });
 

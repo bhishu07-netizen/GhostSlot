@@ -46,7 +46,7 @@ so judges can get in).
 |---|---|
 | `npm run setup` | Installs frontend + backend packages |
 | `npm run dev:all` | Runs backend (port 8787) + app (port 5173) |
-| `npm test` | Runs the 22 security, role, age-gate and twin tests |
+| `npm test` | Runs the 23 security, role, guardian-consent, age-gate and twin tests |
 | `npm run audit` | Checks every package for known vulnerabilities |
 | `npm run build` then `npm start` | Production mode: the backend serves the built app on one origin |
 
@@ -83,6 +83,28 @@ role on every request, so hiding a button is never the only protection.
 
 ---
 
+## Under-18 students (parent / guardian consent)
+
+College students can be under 18. Under India's DPDP Act 2023 (s.9) they're "children", so an app
+needs a parent's or guardian's verifiable consent before it stores their data. GhostSlot does this:
+
+1. An under-18 **student** signs up normally. The age check says *parent or guardian approval needed*.
+2. Their details wait in `gs_pending_minors` (password already hashed). **Nothing is an account yet**;
+   unapproved requests are deleted after 48 hours.
+3. They send the parent a link (`/guardian#<code>`, *Send to parent* uses the phone's share sheet).
+   The code sits after `#`, so it never reaches server logs.
+4. The parent sees exactly what's stored and why, gives their name and relation, confirms they're
+   an adult (date of birth checked once, not saved) and approves. Then the account is created.
+5. The student gets **the same access as any student**. Room karma, badges and behaviour stats are
+   hidden for under-18s, since the Act bans behavioural tracking of children.
+6. The parent can come back to the same link to **withdraw consent**, which deletes the account.
+
+Faculty and facilities accounts stay **18+ only**. Limitation: the parent's details are
+self-declared (one of the routes DPDP Rules r.10 allows). For stronger checks, verify against the
+university's admission records or a DigiLocker age token.
+
+---
+
 ## Sign up and the age gate
 
 Signup is three steps: **You → Age check → Secure**.
@@ -91,7 +113,7 @@ Signup is three steps: **You → Age check → Secure**.
   The server works out the exact age (on India's date). If they're 18+,
   they get a one-time pass that's valid for 20 minutes. The date of birth is then
   discarded: it's never saved, logged or sent anywhere else.
-- **Under 18:** no account is created. The student sees a clear, kind explanation
+- **Under 18 (faculty / facilities):** no account is created. The student sees a clear, kind explanation
   (DPDP Act 2023). Sign-up is paused on that browser for 24 hours so they can't
   just go back and change the year.
 - **Can't be skipped:** the server refuses any signup without a valid,
@@ -151,7 +173,7 @@ to signed-in users only.
 from the last stored reading, so there are no gaps in the history.
 > Real sensor rows go in the same tables with `source = 'sensor'`.
 
-**Setup:** run migrations `0001` to `0005` in the Supabase SQL editor (in order),
+**Setup:** run migrations `0001` to `0006` in the Supabase SQL editor (in order),
 then set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Without them the Twin tab
 says it isn't connected; the rest of the app still works.
 

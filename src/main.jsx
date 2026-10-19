@@ -10,9 +10,13 @@ import "@fontsource/space-grotesk/700.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import App from "./App.jsx";
+import GuardianConsent from "./auth/GuardianConsent.jsx";
+
+// /guardian#<code> is the parent/guardian consent page for under-18 students.
+const Root = window.location.pathname.replace(/\/+$/, "") === "/guardian" ? GuardianConsent : App;
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <Root />
   </React.StrictMode>
 );

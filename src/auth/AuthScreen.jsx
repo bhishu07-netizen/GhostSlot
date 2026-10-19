@@ -107,13 +107,14 @@ function RolePicker({ role, setRole }) {
 // The age gate. Neutral: it never says what the cut-off is before you
 // answer, and nothing is pre-selected. The server decides.
 // ─────────────────────────────────────────────────────────────────────────────
-function AgeGate({ onVerified, onBlocked, onBack }) {
+function AgeGate({ role, onVerified, onBlocked, onBack }) {
   const [d, setD] = useState("");
   const [m, setM] = useState("");
   const [y, setY] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [verified, setVerified] = useState(false);
+  const [minor, setMinor] = useState(false);
   const thisYear = new Date().getFullYear();
   const years = useMemo(() => Array.from({ length: 101 }, (_, i) => thisYear - i), [thisYear]);
 
@@ -123,9 +124,10 @@ function AgeGate({ onVerified, onBlocked, onBack }) {
     const dob = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     setBusy(true);
     try {
-      const res = await api("/auth/age-check", { method: "POST", body: { dob } });
+      const res = await api("/auth/age-check", { method: "POST", body: { dob, role } });
       setVerified(true);
-      setTimeout(() => onVerified(res.ageToken), 650);
+      setMinor(!!res.minor);
+      setTimeout(() => onVerified(res.ageToken, !!res.minor), res.minor ? 1600 : 650);
     } catch (e) {
       if (e.code === "under_age" || e.code === "age_gate_locked") onBlocked(e.data?.until);
       else setError(e.message);
@@ -148,8 +150,8 @@ function AgeGate({ onVerified, onBlocked, onBack }) {
             {verified ? <CheckCircle2 size={22} color={C.green} /> : <ShieldCheck size={22} color={C.ink} />}
           </div>
           <div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 17 }}>{verified ? "Age verified" : "Quick age check"}</div>
-            <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{verified ? "You're good to go. Your birth date has already been discarded." : "Your date of birth confirms you can make an account."}</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 17 }}>{verified ? (minor ? "Parent or guardian approval needed" : "Age verified") : "Quick age check"}</div>
+            <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{verified ? (minor ? "You're under 18, so a parent or guardian has to approve your account. You'll get a link to send them." : "You're good to go. Your birth date has already been discarded.") : "Your date of birth confirms you can make an account."}</div>
           </div>
         </div>
 
@@ -200,6 +202,37 @@ function AgeGate({ onVerified, onBlocked, onBack }) {
   );
 }
 
+// After an under-18 student signs up: the link to send a parent/guardian.
+function GuardianPending({ pending, onDone }) {
+  const [copied, setCopied] = useState(false);
+  const until = new Date(pending.expiresAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const msg = `Hi! I'm signing up for GhostSlot, the CU campus app. I'm under 18, so it needs your approval. Please open this link: ${pending.link}`;
+  async function copy() {
+    try { await navigator.clipboard.writeText(pending.link); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* clipboard blocked */ }
+  }
+  async function share() {
+    if (navigator.share) { try { await navigator.share({ title: "GhostSlot parent approval", text: msg }); } catch { /* cancelled */ } }
+    else copy();
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: 18 }}>
+        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>Almost there: ask a parent or guardian</div>
+        <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginTop: 6 }}>
+          Send them this link. They'll see what GhostSlot stores, confirm they're your parent or guardian, and approve. Then log in with your roll number and password.
+        </div>
+        <div style={{ marginTop: 12, background: "#0A0B0D", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "10px 12px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, wordBreak: "break-all", color: C.silver }}>{pending.link}</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button onClick={share} style={{ ...silverBtn, flex: 1, padding: "10px 12px", fontSize: 13.5 }}>Send to parent</button>
+          <button onClick={copy} style={{ ...ghostBtn, flex: 1, padding: "10px 12px" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>The link works until {until} IST. If nobody approves by then, your sign-up is deleted. Keep this link private: it's only for your parent or guardian.</div>
+      </div>
+      <button onClick={onDone} style={ghostBtn}><ArrowLeft size={15} /> Back to login</button>
+    </div>
+  );
+}
+
 function AgeBlocked({ until, onDone }) {
   const when = until ? new Date(until).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
   return (
@@ -210,7 +243,7 @@ function AgeBlocked({ until, onDone }) {
         </div>
         <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>We can't create an account for you yet</div>
         <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginTop: 8 }}>
-          GhostSlot accounts are for people aged <b style={{ color: C.text }}>18 and over</b>. Under India's Digital Personal Data Protection Act, 2023, we'd need verified consent from a parent or guardian to handle a younger person's data, and GhostSlot doesn't collect that.
+          Faculty and facilities accounts are for people aged <b style={{ color: C.text }}>18 and over</b>. If you're an under-18 <b style={{ color: C.text }}>student</b>, sign up as a Student: a parent or guardian approves your account, as India's Digital Personal Data Protection Act, 2023 requires.
         </div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, fontSize: 11.5, color: C.green, background: "rgba(61,220,151,0.10)", border: "1px solid rgba(61,220,151,0.25)", borderRadius: 999, padding: "5px 10px" }}>
           <CheckCircle2 size={12} /> Nothing you entered was saved
@@ -238,6 +271,8 @@ export default function AuthScreen({ onAuthed }) {
   const [pass2, setPass2] = useState("");
   const [consent, setConsent] = useState(false);
   const [ageToken, setAgeToken] = useState(null);
+  const [isMinor, setIsMinor] = useState(false);
+  const [pending, setPending] = useState(null); // { link, expiresAt } after an under-18 sign-up
   const [blockedUntil, setBlockedUntil] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -286,8 +321,9 @@ export default function AuthScreen({ onAuthed }) {
     if (!consent) { setError("Please read and accept the privacy notice."); return; }
     setBusy(true);
     try {
-      const { user } = await api("/auth/signup", { method: "POST", body: { role, department: meta.departments ? department : undefined, accessCode: role === "facilities" ? accessCode.trim() : undefined, name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
-      onAuthed(user, "signup");
+      const res = await api("/auth/signup", { method: "POST", body: { role, department: meta.departments ? department : undefined, accessCode: role === "facilities" ? accessCode.trim() : undefined, name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
+      if (res.pending) { setPending({ link: window.location.origin + res.guardianPath, expiresAt: res.expiresAt }); return; }
+      onAuthed(res.user, "signup");
     } catch (e) {
       if (e.code === "age_check_required") { setAgeToken(null); setStep(2); }
       if (e.code === "age_gate_locked") { setBlockedUntil(Date.now()); }
@@ -321,7 +357,7 @@ export default function AuthScreen({ onAuthed }) {
           ))}
         </div>
 
-        {!(mode === "signup" && blocked) && !(mode === "signup" && step > 1) && <div style={{ marginBottom: 14 }}><RolePicker role={role} setRole={setRole} /></div>}
+        {!(mode === "signup" && (blocked || pending)) && !(mode === "signup" && step > 1) && <div style={{ marginBottom: 14 }}><RolePicker role={role} setRole={setRole} /></div>}
 
         {mode === "login" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -348,7 +384,9 @@ export default function AuthScreen({ onAuthed }) {
 
         {mode === "signup" && blocked && <AgeBlocked until={blockedUntil} onDone={() => switchMode("login")} />}
 
-        {mode === "signup" && !blocked && (
+        {mode === "signup" && !blocked && pending && <GuardianPending pending={pending} onDone={() => { setPending(null); switchMode("login"); }} />}
+
+        {mode === "signup" && !blocked && !pending && (
           <div>
             <Stepper step={step} />
             {step === 1 && (
@@ -379,7 +417,8 @@ export default function AuthScreen({ onAuthed }) {
             )}
             {step === 2 && (
               <AgeGate
-                onVerified={(tok) => { setAgeToken(tok); setError(""); setStep(3); }}
+                role={role}
+                onVerified={(tok, minor) => { setAgeToken(tok); setIsMinor(minor); setError(""); setStep(3); }}
                 onBlocked={(until) => setBlockedUntil(until || Date.now() + 24 * 3600 * 1000)}
                 onBack={() => setStep(1)}
               />
@@ -387,9 +426,15 @@ export default function AuthScreen({ onAuthed }) {
             {step === 2 && error && <div style={{ marginTop: 10 }}><ErrorBox>{error}</ErrorBox></div>}
             {step === 3 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 6, fontSize: 11.5, color: C.green, background: "rgba(61,220,151,0.10)", border: "1px solid rgba(61,220,151,0.25)", borderRadius: 999, padding: "5px 10px" }}>
-                  <ShieldCheck size={12} /> Age verified · birth date discarded
-                </div>
+                {isMinor ? (
+                  <div style={{ fontSize: 12, color: C.amber, background: "rgba(245,181,68,0.08)", border: "1px solid rgba(245,181,68,0.25)", borderRadius: 10, padding: "8px 10px", lineHeight: 1.45 }}>
+                    <b>Under 18:</b> set your password now. Your account starts working once a parent or guardian approves it (you'll get the link next). Birth date discarded.
+                  </div>
+                ) : (
+                  <div style={{ display: "inline-flex", alignSelf: "flex-start", alignItems: "center", gap: 6, fontSize: 11.5, color: C.green, background: "rgba(61,220,151,0.10)", border: "1px solid rgba(61,220,151,0.25)", borderRadius: 999, padding: "5px 10px" }}>
+                    <ShieldCheck size={12} /> Age verified · birth date discarded
+                  </div>
+                )}
                 <Field icon={Lock}>
                   <input autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} type={showPass ? "text" : "password"} placeholder="create a password" style={{ ...inputStyle, paddingRight: 38 }} maxLength={128} />
                   <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 10, top: 11, background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
@@ -407,7 +452,7 @@ export default function AuthScreen({ onAuthed }) {
                   <span>I've read the <button type="button" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, color: C.text, textDecoration: "underline", cursor: "pointer", fontSize: 12.5 }}>privacy notice</button> and agree to GhostSlot using my name, {meta.idLabel}{meta.departments ? ` and ${meta.deptLabel.toLowerCase()}` : ""} to run my account.</span>
                 </label>
                 <ErrorBox>{error}</ErrorBox>
-                <button onClick={createAccount} disabled={busy} style={{ ...silverBtn, marginTop: 4, opacity: busy ? 0.7 : 1 }}>{busy ? <Loader2 size={15} className="gs-spin" /> : null} Create account</button>
+                <button onClick={createAccount} disabled={busy} style={{ ...silverBtn, marginTop: 4, opacity: busy ? 0.7 : 1 }}>{busy ? <Loader2 size={15} className="gs-spin" /> : null} {isMinor ? "Continue to parent approval" : "Create account"}</button>
               </div>
             )}
           </div>

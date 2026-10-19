@@ -1280,7 +1280,7 @@ export default function GhostSlot() {
           <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F5F7" }}>{currentUser.name}</div>
           <div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>
+            {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => handleLogout()} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}><LogOut size={11} /> logout</button>
           </div>
         </div>
@@ -1295,7 +1295,7 @@ export default function GhostSlot() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TimeDayPicker {...pickerProps} />
-          <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>
+          {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
           <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
             <Bell size={16} color="#F4F5F7" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
           </button>
@@ -1309,7 +1309,7 @@ export default function GhostSlot() {
             <Wordmark size={20} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>
+            {!currentUser?.isMinor && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
               <Bell size={16} color="#F4F5F7" />
               <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
@@ -1703,6 +1703,11 @@ export default function GhostSlot() {
               <LogOut size={13} /> logout
             </button>
           </div>
+          {currentUser.isMinor ? (
+            <div style={{ background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: "#8B8F99", lineHeight: 1.5 }}>
+              Room karma, badges and booking-behaviour stats are switched off for under-18 accounts. India's DPDP Act doesn't allow behavioural tracking of children. Everything else works the same.
+            </div>
+          ) : (<>
           <div style={{ background: "linear-gradient(180deg, #1A1B20, #0E0F12)", borderRadius: 18, padding: 18, border: "1px solid rgba(255,255,255,0.07)" }}>
             <div style={{ fontSize: 11.5, color: "#8B8F99", fontFamily: "'JetBrains Mono', monospace" }}>ROOM KARMA</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: "#E6E8EC" }}>{karma}</div>
@@ -1724,6 +1729,7 @@ export default function GhostSlot() {
             <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />library regular</Pill>
             <Pill tone="coral"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />1pm survivor</Pill>
           </div>
+          </>)}
 
           {/* Security & privacy — what we hold about you, and the controls */}
           <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 1px 0 rgba(255,255,255,.04) inset" }}>
@@ -1736,8 +1742,9 @@ export default function GhostSlot() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div style={{ background: "rgba(61,220,151,0.08)", border: "1px solid rgba(61,220,151,0.22)", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#3DDC97", display: "flex", alignItems: "center", gap: 5 }}><CheckCircle2 size={13} /> 18+ verified</div>
-                <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. Birth date not stored.</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#3DDC97", display: "flex", alignItems: "center", gap: 5 }}><CheckCircle2 size={13} /> {currentUser.isMinor ? "Guardian approved" : "18+ verified"}</div>
+                {currentUser.isMinor && currentUser.guardian && <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>by {currentUser.guardian.relation.toLowerCase()} {currentUser.guardian.name}{currentUser.guardian.consentAt ? ` · ${new Date(currentUser.guardian.consentAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. They can withdraw it from their link.</div>}
+                {!currentUser.isMinor && <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. Birth date not stored.</div>}
               </div>
               <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><MonitorSmartphone size={13} /> {currentUser.activeSessions || 1} active session{(currentUser.activeSessions || 1) === 1 ? "" : "s"}</div>

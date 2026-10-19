@@ -38,6 +38,7 @@ class FileStore {
     }
     this.db.users ||= [];
     this.db.sessions ||= [];
+    this.db.pendingMinors ||= [];
     this.writing = Promise.resolve();
   }
 
@@ -58,6 +59,21 @@ class FileStore {
 
   async findUserByRoll(rollLower) { return this.db.users.find((u) => u.roll_lower === rollLower) || null; }
   async findUserById(id) { return this.db.users.find((u) => u.id === id) || null; }
+  async findUserByGuardianHash(h) { return this.db.users.find((u) => u.guardian_token_hash === h) || null; }
+
+  // Under-18 sign-ups waiting for a parent/guardian (expire after 48 h).
+  async createPendingMinor(p) {
+    this.db.pendingMinors.push({ created_at: new Date().toISOString(), ...p });
+    await this.persist();
+  }
+  async getPendingMinor(codeHash) {
+    const p = this.db.pendingMinors.find((x) => x.code_hash === codeHash);
+    return p && new Date(p.expires_at).getTime() > Date.now() ? p : null;
+  }
+  async deletePendingMinor(codeHash) {
+    this.db.pendingMinors = this.db.pendingMinors.filter((x) => x.code_hash !== codeHash);
+    await this.persist();
+  }
 
   async createUser(u) {
     if (this.db.users.some((x) => x.roll_lower === u.roll_lower)) throw new DuplicateError();
@@ -100,9 +116,10 @@ class FileStore {
   }
   async purgeExpired() {
     const now = Date.now();
-    const before = this.db.sessions.length;
+    const before = this.db.sessions.length + this.db.pendingMinors.length;
     this.db.sessions = this.db.sessions.filter((s) => new Date(s.expires_at).getTime() > now);
-    if (this.db.sessions.length !== before) await this.persist();
+    this.db.pendingMinors = this.db.pendingMinors.filter((p) => new Date(p.expires_at).getTime() > now);
+    if (this.db.sessions.length + this.db.pendingMinors.length !== before) await this.persist();
   }
 }
 
@@ -130,6 +147,25 @@ class SupabaseStore {
     const sb = await this.q();
     const r = await sb.from("gs_users").select("*").eq("id", id).maybeSingle();
     SupabaseStore.check(r); return r.data;
+  }
+  async findUserByGuardianHash(h) {
+    const sb = await this.q();
+    const r = await sb.from("gs_users").select("*").eq("guardian_token_hash", h).maybeSingle();
+    SupabaseStore.check(r); return r.data;
+  }
+  async createPendingMinor(p) {
+    const sb = await this.q();
+    SupabaseStore.check(await sb.from("gs_pending_minors").insert(p));
+  }
+  async getPendingMinor(codeHash) {
+    const sb = await this.q();
+    const r = await sb.from("gs_pending_minors").select("*").eq("code_hash", codeHash)
+      .gt("expires_at", new Date().toISOString()).maybeSingle();
+    SupabaseStore.check(r); return r.data;
+  }
+  async deletePendingMinor(codeHash) {
+    const sb = await this.q();
+    SupabaseStore.check(await sb.from("gs_pending_minors").delete().eq("code_hash", codeHash));
   }
   async createUser(u) {
     const sb = await this.q();
@@ -172,6 +208,7 @@ class SupabaseStore {
   async purgeExpired() {
     const sb = await this.q();
     SupabaseStore.check(await sb.from("gs_sessions").delete().lte("expires_at", new Date().toISOString()));
+    SupabaseStore.check(await sb.from("gs_pending_minors").delete().lte("expires_at", new Date().toISOString()));
   }
 }
 

@@ -46,12 +46,15 @@ function client() {
   };
 }
 
-test("under-18 is refused and the browser is locked from retrying", async () => {
+test("under-18 staff sign-up is refused and the browser is locked from retrying", async () => {
   const c = client();
-  const r1 = await c("/api/auth/age-check", { method: "POST", body: { dob: "2012-06-01" } });
+  const r1 = await c("/api/auth/age-check", { method: "POST", body: { dob: "2012-06-01", role: "facilities" } });
   assert.equal(r1.status, 403); assert.equal(r1.data.error, "under_age");
-  const r2 = await c("/api/auth/age-check", { method: "POST", body: { dob: "1999-06-01" } });
+  const r2 = await c("/api/auth/age-check", { method: "POST", body: { dob: "1999-06-01", role: "facilities" } });
   assert.equal(r2.status, 403); assert.equal(r2.data.error, "age_gate_locked");
+  // Under 10 isn't a college student either.
+  const r3 = await client()("/api/auth/age-check", { method: "POST", body: { dob: `${new Date().getFullYear() - 8}-01-01`, role: "student" } });
+  assert.equal(r3.status, 403);
   const cfg = await c("/api/auth/config");
   assert.equal(cfg.data.ageGate.locked, true);
 });
@@ -151,6 +154,51 @@ test("roles: separate demo accounts, role-matched login, facilities sign-up need
   const fs = await t("/api/auth/signup", { method: "POST", body: { name: "Anil Rao", roll: "E30412", password: "Lecture-hall-9", consent: true, role: "faculty", department: "ECE", ageToken: tok } });
   assert.equal(fs.status, 201);
   assert.equal(fs.data.user.role, "faculty");
+});
+
+test("under-18 students join only after a parent/guardian approves; staff stay 18+", async () => {
+  const kid = client();
+  const y = new Date().getFullYear();
+  const dob = `${y - 16}-01-01`;
+  // Faculty / facilities under 18 are still blocked (and locked out for 24 h).
+  const staff = client();
+  assert.equal((await staff("/api/auth/age-check", { method: "POST", body: { dob, role: "faculty" } })).status, 403);
+
+  const ac = await kid("/api/auth/age-check", { method: "POST", body: { dob, role: "student" } });
+  assert.equal(ac.status, 200);
+  assert.equal(ac.data.minor, true);
+  // A minor token can't be used to make a staff account.
+  assert.equal((await kid("/api/auth/signup", { method: "POST", body: { role: "faculty", department: "CSE", name: "Riya Mehta", roll: "E99881", password: "Lab-coat-2026", consent: true, ageToken: ac.data.ageToken } })).status, 403);
+  const ac2 = await kid("/api/auth/age-check", { method: "POST", body: { dob, role: "student" } });
+  const su = await kid("/api/auth/signup", { method: "POST", body: { role: "student", name: "Riya Mehta", roll: "25BCS20001", password: "Lab-coat-2026", consent: true, ageToken: ac2.data.ageToken } });
+  assert.equal(su.status, 202);
+  assert.equal(su.data.pending, true);
+  const code = su.data.guardianPath.split("#")[1];
+  // No account (and no session) until the guardian approves.
+  assert.equal((await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: "25BCS20001", password: "Lab-coat-2026" } })).status, 401);
+
+  const g = client();
+  const look = await g("/api/auth/guardian/lookup", { method: "POST", body: { code } });
+  assert.equal(look.data.status, "pending");
+  assert.equal(look.data.child.name, "Riya Mehta");
+  assert.equal((await g("/api/auth/guardian/lookup", { method: "POST", body: { code: "x".repeat(43) } })).status, 404);
+  const approve = (body) => g("/api/auth/guardian/approve", { method: "POST", body: { code, relation: "Parent", consent: true, guardianName: "Sanjay Mehta", dob: "1978-03-03", ...body } });
+  assert.equal((await approve({ dob: `${y - 15}-01-01` })).status, 403);   // guardian must be an adult
+  assert.equal((await approve({ guardianName: "Riya Mehta" })).status, 400); // student can't approve as themself
+  assert.equal((await approve({ relation: "Friend" })).status, 400);
+  assert.equal((await approve({ consent: false })).status, 400);
+  assert.equal((await approve({})).status, 200);
+  assert.equal((await g("/api/auth/guardian/lookup", { method: "POST", body: { code } })).data.status, "approved");
+
+  const me = client();
+  const li = await me("/api/auth/login", { method: "POST", body: { role: "student", roll: "25BCS20001", password: "Lab-coat-2026" } });
+  assert.equal(li.status, 200);
+  assert.equal(li.data.user.isMinor, true);
+  assert.equal(li.data.user.guardian.relation, "Parent");
+
+  // Guardian withdraws consent → account gone.
+  assert.equal((await g("/api/auth/guardian/withdraw", { method: "POST", body: { code, confirm: true } })).data.deleted, "account");
+  assert.equal((await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: "25BCS20001", password: "Lab-coat-2026" } })).status, 401);
 });
 
 test("Wi-Fi CSI: device key required, admin endpoints off without a key", async () => {
