@@ -99,6 +99,10 @@ test("AI endpoints need a session; logout and delete-account work", async () => 
   const login = await c("/api/auth/login", { method: "POST", body: { roll: "23BCS10432", password: "Ghost-Demo-2026" } });
   assert.equal(login.status, 200);
   assert.equal((await c("/api/ai/chat", { method: "POST", body: { message: "hi" } })).status, 503); // signed in, no key in test
+  // The shared demo account can't be deleted or sign every judge out.
+  assert.equal((await c("/api/auth/delete-account", { method: "POST", body: { password: "Ghost-Demo-2026" } })).status, 403);
+  assert.equal((await c("/api/auth/logout-all", { method: "POST" })).status, 403);
+  assert.equal((await c("/api/auth/me")).data.user.isDemo, true);
   await c("/api/auth/logout", { method: "POST" });
   assert.equal((await c("/api/auth/me")).status, 401);
 

@@ -1743,11 +1743,12 @@ export default function GhostSlot() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => handleLogout(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><LogOut size={13} /> Sign out everywhere</button>
+              {!currentUser.isDemo && <button onClick={() => handleLogout(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><LogOut size={13} /> Sign out everywhere</button>}
               <button onClick={() => setShowPrivacy(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Info size={13} /> Privacy notice</button>
-              <button onClick={() => { setDeleteOpen((o) => !o); setDeleteErr(""); }} style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#FF8B8B", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Delete my account</button>
+              {!currentUser.isDemo && <button onClick={() => { setDeleteOpen((o) => !o); setDeleteErr(""); }} style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#FF8B8B", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Delete my account</button>}
             </div>
-            {deleteOpen && (
+            {currentUser.isDemo && <div style={{ fontSize: 11.5, color: "#8B8F99" }}>This is the shared judges' demo account, so <i>Sign out everywhere</i> and <i>Delete my account</i> are switched off. Sign up to try them.</div>}
+            {deleteOpen && !currentUser.isDemo && (
               <div style={{ background: "rgba(255,107,107,0.06)", border: "1px solid rgba(255,107,107,0.2)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: 12.5, color: "#C9CCD3" }}>This permanently deletes your account and signs you out on every device. Enter your password to confirm.</div>
                 <input type="password" autoComplete="current-password" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} placeholder="password" maxLength={128} style={{ background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "9px 10px", color: "#F4F5F7", fontSize: 13, outline: "none" }} />

@@ -51,6 +51,7 @@ export function publicUser(u, extra = {}) {
     ageCheckedAt: u.age_checked_at,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
+    isDemo: isDemoUser(u),
     ...extra,
   };
 }
@@ -225,7 +226,13 @@ export function buildAuth(store) {
     } catch (err) { next(err); }
   });
 
-  router.post("/logout-all", requireAuth, async (req, res, next) => {
+  // The shared judges' demo account can't sign everyone out or be deleted,
+  // otherwise one visitor could lock every other judge out of the demo.
+  const demoGuard = (req, res, next) => (isDemoUser(req.user)
+    ? res.status(403).json({ error: "demo_locked", message: "That's switched off on the shared demo account. Create your own account to try it." })
+    : next());
+
+  router.post("/logout-all", requireAuth, demoGuard, async (req, res, next) => {
     try {
       await store.deleteSessionsForUser(req.user.id);
       res.clearCookie(SESSION_COOKIE, baseCookie);
@@ -235,7 +242,7 @@ export function buildAuth(store) {
 
   // Right to erasure (DPDP Act s.12): re-enter password, account and all
   // sessions are deleted immediately.
-  router.post("/delete-account", requireAuth, deleteLimiter, async (req, res, next) => {
+  router.post("/delete-account", requireAuth, demoGuard, deleteLimiter, async (req, res, next) => {
     try {
       const password = typeof req.body?.password === "string" ? req.body.password.slice(0, 128) : "";
       if (!(await verifyPassword(password, req.user.password_hash))) {
@@ -256,6 +263,9 @@ export function buildAuth(store) {
 // ---------------------------------------------------------------------------
 export const DEMO_ROLL = process.env.DEMO_ROLL || "23BCS10432";
 export const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "Ghost-Demo-2026";
+export function isDemoUser(u) {
+  return process.env.DEMO_ACCOUNT !== "off" && !!u && u.roll_lower === DEMO_ROLL.toLowerCase();
+}
 
 export async function ensureDemoUser(store) {
   if (process.env.DEMO_ACCOUNT === "off") return;

@@ -190,7 +190,7 @@ export default function Twin() {
 
       {/* Alerts */}
       <Card>
-        <Title icon={AlertTriangle} sub={`${openAlerts.length} open · facilities can acknowledge or resolve each one.`}>Alerts</Title>
+        <Title icon={AlertTriangle} sub={`${openAlerts.length} open · ${data.canManageAlerts ? "you can acknowledge or resolve each one (facilities access)." : "facilities staff acknowledge and resolve these."}`}>Alerts</Title>
         {data.alerts.length === 0 && <div style={{ fontSize: 12.5, color: C.sub }}>Nothing needs attention right now.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {data.alerts.map((a) => {
@@ -204,8 +204,8 @@ export default function Twin() {
                   <div style={{ fontSize: 12, color: "#C9CCD3", marginTop: 2 }}>{a.detail}</div>
                   <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
                   <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-                    {a.status === "open" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}
-                    {a.status !== "resolved" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "resolved")} style={btn()}>Mark resolved</button>}
+                    {data.canManageAlerts && a.status === "open" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}
+                    {data.canManageAlerts && a.status !== "resolved" && <button disabled={busyKey === a.key} onClick={() => ack(a.key, "resolved")} style={btn()}>Mark resolved</button>}
                     {a.status !== "open" && <span style={{ fontSize: 11, color: C.good, display: "flex", gap: 4, alignItems: "center" }}><CheckCircle2 size={12} /> {a.status}</span>}
                   </div>
                 </div>

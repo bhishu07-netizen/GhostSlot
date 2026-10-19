@@ -117,16 +117,17 @@ to signed-in users only.
 | **Classroom utilisation** | Heatmap of how often each room is used, per weekday hour |
 | **Energy waste** | A slot is wasted when nobody is inside but the room draws over 25% of its rated load. Shown in kWh and ₹ (tariff in `TWIN_TARIFF_INR_PER_KWH`, default ₹8/kWh, an assumption) |
 | **Water anomalies** | Robust z-score against the median + MAD for the same building, hour and weekday/weekend. Above 6 = flagged; back-to-back readings become one episode |
-| **Alerts** | Rooms wasting power now + water episodes. Facilities can *Acknowledge* or *Mark resolved* (stored in `gs_twin_alert_acks`) |
+| **Alerts** | Rooms wasting power now + water episodes. Facilities accounts (roll numbers in `TWIN_ADMIN_ROLLS`, default: the demo account) can *Acknowledge* or *Mark resolved*; other students see them read-only |
 | **Use what's already built** | Rooms used under 30% of class hours get a reallocation suggestion |
 
 > **Data honesty:** CU's meters aren't connected yet. `gs_twin_generate()` simulates
 > realistic readings (class timings, lunch dip, lights left on, night-time leaks) and
 > every row is tagged `source = 'simulated'`. The app shows a *Simulated data*
-> banner. The server tops up the feed every 5 minutes so the twin always shows "now".
+> banner. The server tops up the feed every 5 minutes, and after a sleep it backfills
+from the last stored reading, so there are no gaps in the history.
 > Real sensor rows go in the same tables with `source = 'sensor'`.
 
-**Setup:** run migrations `0001`, `0002` and `0003` in the Supabase SQL editor (in order),
+**Setup:** run migrations `0001` to `0004` in the Supabase SQL editor (in order),
 then set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Without them the Twin tab
 says it isn't connected; the rest of the app still works.
 

@@ -67,6 +67,8 @@ and how it's tested (`npm test`, 14 tests).
 **Campus Twin (0.4)**
 - `/api/twin/*` is for signed-in users only and rate-limited (60 requests/min per IP). The alert-ack endpoint also needs our own `Origin`, and validates the alert key against a strict pattern and the status against an allow-list.
 - Twin tables have RLS on with no policies, `anon`/`authenticated` have no grants, and `EXECUTE` on every twin function is revoked from them, so the public Supabase API can't read or run any of it. Only the server's service-role key can.
+- Only facilities accounts (`TWIN_ADMIN_ROLLS`) can acknowledge or resolve alerts (server-checked, 403 otherwise); students get read-only access.
+- The shared demo account can't be deleted or use *Sign out everywhere*, so one visitor can't lock other judges out.
 - Every twin function has a pinned `search_path` (Supabase security advisor clean apart from the intended "RLS with no policies" notice).
 - The ₹ figures use an assumed tariff and the data is labelled simulated in the API (`dataSource`) and the UI.
 

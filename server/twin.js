@@ -10,6 +10,16 @@ import express from "express";
 const TARIFF = clampNum(Number(process.env.TWIN_TARIFF_INR_PER_KWH), 1, 50, 8);
 const CACHE_MS = 60 * 1000;
 const TICK_MS = 5 * 60 * 1000;
+const BACKFILL_MAX_MS = 14 * 24 * 3600 * 1000;
+
+// Who may acknowledge/resolve facilities alerts: roll numbers listed in
+// TWIN_ADMIN_ROLLS (comma separated). Default: the judges' demo account, so
+// the demo works, while ordinary student sign-ups only get read access.
+function adminRolls() {
+  const raw = process.env.TWIN_ADMIN_ROLLS ?? (process.env.DEMO_ACCOUNT === "off" ? "" : (process.env.DEMO_ROLL || "23BCS10432"));
+  return new Set(raw.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean));
+}
+const canManage = (user) => !!user && adminRolls().has(String(user.roll_lower || "").toLowerCase());
 
 function clampNum(v, lo, hi, dflt) { return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt; }
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -42,12 +52,25 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
     return r.data;
   }
 
+  const cache = new Map();
+
   // Keep the simulated feed flowing so the twin always shows "now".
+  // Backfills from the latest stored reading, so a server that slept for
+  // hours (Render free tier) doesn't leave holes in the history.
   async function tick() {
     if (!sb()) return;
     try {
-      const now = new Date();
-      await rpc("gs_twin_generate", { p_from: new Date(now - 60 * 60 * 1000).toISOString(), p_to: now.toISOString() });
+      const now = Date.now();
+      const latest = await table("gs_twin_readings", (q) => q.select("ts").order("ts", { ascending: false }).limit(1));
+      const last = latest?.[0]?.ts ? new Date(latest[0].ts).getTime() : now - BACKFILL_MAX_MS;
+      let from = Math.max(last, now - BACKFILL_MAX_MS);
+      // gs_twin_generate accepts at most 31 days; chunk by 7 to keep each call small.
+      while (from < now) {
+        const to = Math.min(from + 7 * 24 * 3600 * 1000, now);
+        await rpc("gs_twin_generate", { p_from: new Date(from).toISOString(), p_to: new Date(to).toISOString() });
+        from = to;
+      }
+      cache.clear();
     } catch (e) { console.error(e.message); }
   }
   if (autoTick && (injected || (url && key))) {
@@ -59,7 +82,6 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
     sb() ? next() : res.status(503).json({ error: "twin_not_configured", message: "The campus twin needs the Supabase database. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY." });
 
   // ---- Overview ----------------------------------------------------------
-  const cache = new Map();
   async function overview(days) {
     const hit = cache.get(days);
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
@@ -145,7 +167,7 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
 
   router.get("/twin/overview", requireAuth, notConfigured, async (req, res, next) => {
     const days = [7, 14].includes(Number(req.query.days)) ? Number(req.query.days) : 7;
-    try { res.json(await overview(days)); } catch (e) { next(e); }
+    try { res.json({ ...(await overview(days)), canManageAlerts: canManage(req.user) }); } catch (e) { next(e); }
   });
 
   // Water series for one building (last 48 h, 15-min readings).
@@ -161,6 +183,7 @@ export function buildTwin({ requireAuth, sameOriginOnly, client: injected = null
 
   // Facilities marks an alert as acknowledged or resolved.
   router.post("/twin/alerts/ack", sameOriginOnly, requireAuth, notConfigured, async (req, res, next) => {
+    if (!canManage(req.user)) return res.status(403).json({ error: "facilities_only", message: "Only facilities staff can update alerts." });
     const k = String(req.body?.key || "");
     const status = req.body?.status;
     if (!/^(energy|water):[A-Za-z0-9-]{1,40}:[0-9T:.+\-Z]{10,40}$/.test(k)) return res.status(400).json({ error: "bad_key" });

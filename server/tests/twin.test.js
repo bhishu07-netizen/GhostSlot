@@ -50,7 +50,12 @@ let server, base;
 before(async () => {
   const app = express();
   app.use(express.json());
-  const requireAuth = (req, res, next) => (req.get("x-test-user") ? ((req.user = { id: "u1" }), next()) : res.status(401).json({ error: "not_signed_in" }));
+  const requireAuth = (req, res, next) => {
+    const who = req.get("x-test-user");
+    if (!who) return res.status(401).json({ error: "not_signed_in" });
+    req.user = who === "student" ? { id: "u2", roll_lower: "24bcs99999" } : { id: "u1", roll_lower: "23bcs10432" };
+    next();
+  };
   const sameOriginOnly = (_req, _res, next) => next();
   app.use("/api", buildTwin({ requireAuth, sameOriginOnly, client: fakeClient, autoTick: false }));
   app.use((err, _req, res, _next) => res.status(500).json({ error: String(err.message) }));
@@ -92,6 +97,15 @@ test("water series validates the building id", async () => {
   assert.equal((await get("/twin/water?building=../etc")).status, 400);
   const ok = await (await get("/twin/water?building=A1")).json();
   assert.equal(ok.readings.length, 1);
+});
+
+test("only facilities accounts can update alerts", async () => {
+  const res = await fetch(base + "/twin/alerts/ack", { method: "POST", headers: { "Content-Type": "application/json", "x-test-user": "student" }, body: JSON.stringify({ key: "water:A1:2026-10-18T20:00:00+00:00", status: "resolved" }) });
+  assert.equal(res.status, 403);
+  const student = await (await fetch(base + "/twin/overview", { headers: { "x-test-user": "student" } })).json();
+  assert.equal(student.canManageAlerts, false);
+  const admin = await (await get("/twin/overview")).json();
+  assert.equal(admin.canManageAlerts, true);
 });
 
 test("alert ack validates key and status, then stores it", async () => {
