@@ -73,6 +73,10 @@ const CONFIG = {
   // If no valid sample has been received for this long, the room is
   // reported OFFLINE regardless of its last known state.
   offlineTimeoutMs: intEnv("CSI_OFFLINE_TIMEOUT_MS", 15000),
+  // A board counts as online if it checked in within this window. Longer
+  // than the room timeout: heartbeats go over HTTPS on a phone hotspot and
+  // one slow or dropped check-in should not flip a working board to offline.
+  deviceTimeoutMs: intEnv("CSI_DEVICE_TIMEOUT_MS", 30000),
 };
 
 function intEnv(name, fallback) {
@@ -108,7 +112,7 @@ const state = {
 
 function deviceOnline(dev) {
   if (!dev.lastSeen) return false;
-  return Date.now() - dev.lastSeen.getTime() <= CONFIG.offlineTimeoutMs;
+  return Date.now() - dev.lastSeen.getTime() <= CONFIG.deviceTimeoutMs;
 }
 
 function mean(arr) {
