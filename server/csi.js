@@ -87,7 +87,8 @@ function floatEnv(name, fallback) {
 // ---- Mutable engine state (single demo room, in-memory) -------------------
 const state = {
   // "hardware" | "simulation" — which source feeds the pipeline right now.
-  mode: (process.env.CSI_MODE || "simulation").toLowerCase() === "hardware" ? "hardware" : "simulation",
+  // Trimmed + lower-cased so " Hardware " pasted into a dashboard still works.
+  mode: String(process.env.CSI_MODE || "simulation").trim().toLowerCase() === "hardware" ? "hardware" : "simulation",
   // "UNKNOWN" | "CALIBRATING" | "NORMAL" | "CHANGE_DETECTED" | "OFFLINE"
   csiState: "UNKNOWN",
   // "NOT_STARTED" | "CALIBRATING" | "ESTABLISHED"
