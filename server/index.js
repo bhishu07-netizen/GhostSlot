@@ -274,6 +274,9 @@ const DIST = path.resolve(__dirname, "..", "dist");
 if (fs.existsSync(path.join(DIST, "index.html")) && process.env.SERVE_STATIC !== "off") {
   app.use("/assets", express.static(path.join(DIST, "assets"), { immutable: true, maxAge: "1y", index: false }));
   app.use(express.static(DIST, { index: false, maxAge: "1h" }));
+  // A missing file (icon, image, script) gets a real 404, never the app's HTML,
+  // so phones and browsers don't mistake a web page for an icon.
+  app.get(/\.[a-z0-9]{2,5}$/i, (_req, res) => res.status(404).type("text/plain").send("Not found"));
   app.get("*", (_req, res) => res.sendFile(path.join(DIST, "index.html")));
   console.log("[server] serving frontend from", DIST);
 }
