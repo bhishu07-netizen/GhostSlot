@@ -124,17 +124,40 @@ static void setupCsi() {
 }
 
 // ---------- Talk to the server --------------------------------------------
+// One TLS connection is opened once and kept alive between posts. A fresh
+// TLS handshake every 2 s took ~4-5 s on the ESP32, so reports arrived late
+// and the OLED showed "RX:--". If the connection drops, the next post reopens it.
+static WiFiClientSecure tls;
+static HTTPClient http;
+static bool httpOpen = false;
+
 static int postJson(const String &body, String &response) {
-  WiFiClientSecure tls;
-  tls.setCACert(GS_ROOT_CAS);
-  HTTPClient http;
-  if (!http.begin(tls, String(SERVER_URL) + "/api/csi/demo-room")) return -100;
-  http.setTimeout(15000);
+  if (!httpOpen) {
+    tls.setCACert(GS_ROOT_CAS);
+    http.setReuse(true);
+    http.setTimeout(8000);
+    if (!http.begin(tls, String(SERVER_URL) + "/api/csi/demo-room")) return -100;
+    httpOpen = true;
+  }
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Key", DEVICE_KEY);
   int code = http.POST(body);
-  if (code > 0) response = http.getString();
-  http.end();
+  if (code > 0) {
+    response = http.getString();
+  } else {
+    // Connection lost (server restart, Wi-Fi blip): close it and retry once.
+    http.end(); tls.stop(); httpOpen = false;
+    tls.setCACert(GS_ROOT_CAS);
+    http.setReuse(true);
+    http.setTimeout(8000);
+    if (!http.begin(tls, String(SERVER_URL) + "/api/csi/demo-room")) return -100;
+    httpOpen = true;
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-Device-Key", DEVICE_KEY);
+    code = http.POST(body);
+    if (code > 0) response = http.getString();
+    else { http.end(); tls.stop(); httpOpen = false; }
+  }
   return code;
 }
 
@@ -198,6 +221,8 @@ void loop() {
     float feature = frames ? (float)(sum / frames) * FEATURE_SCALE : 0;
     if (feature > 10000) feature = 10000;
     if (WiFi.status() == WL_CONNECTED) report(feature, frames);
+    else if (httpOpen) { http.end(); tls.stop(); httpOpen = false; }
+    else if (httpOpen) { http.end(); tls.stop(); httpOpen = false; }
   }
   delay(20);
 }

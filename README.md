@@ -190,9 +190,41 @@ says it isn't connected; the rest of the app still works.
 
 ## The logo
 
-The logo lives in **one place**: `src/brand/BrandMark.jsx`.
-When you have it: save it as `public/brand/logo.png` (square, at least 256×256)
-and change `LOGO_SRC = null` to `LOGO_SRC = "/brand/logo.png"`. Every screen updates.
+The ghost logo is already in `public/brand/` (app icon, favicon, home-screen icon and
+`manifest.webmanifest`, so "Add to Home Screen" works). The in-app mark is in
+`src/brand/BrandMark.jsx`. To change it, replace the PNGs in `public/brand/` with the same names.
+
+---
+
+## "Where are you?" — closest best room from your spot
+
+Find and Map ask where you are, then rank rooms by **real walking time from you**.
+
+| Way | How |
+|---|---|
+| **Door QR** (most accurate indoors) | Facilities → Map → *Door QR codes* → Print. Scanning opens `/?at=<room>` and sets your spot |
+| **Pick place** | One tap from a list of blocks, rooms and spots |
+| **Tap the map** | *Set my spot on the map*, then tap |
+| **GPS** | Works once the map is calibrated (below) |
+
+- *Take me there* (Best Match) and *Go* (your booking bar) open the map with a route and "~N min".
+- With a spot set, Best Match gives distance more weight (`calculateRoomScore` in `src/App.jsx`).
+- Your spot stays on this phone for 3 hours, then asks again. It is never sent to the server.
+
+**Turning GPS on (one time, on campus):** log in as facilities → Map → *GPS calibration*.
+Stand at 3 spots far apart (e.g. Main Gate side, Sports Complex, A2 Block), pick each and tap
+*Save my GPS here*. Then *Copy for campus.js* and paste the list into `GEO_ANCHORS` in
+`src/campus.js`. No coordinates are guessed. Until this is done, GPS falls back to *Pick place*.
+
+## Built not to break
+
+- Double taps are ignored on booking, *I'm out*, pings, AI search, login and signup; the same API
+  call fired twice shares one request, and every call times out after 15 s with a clear message.
+- Before locking a room the app re-checks it's still free. One booking at a time.
+- A booking stores its real end time, so it survives a refresh or a sleeping phone and frees the
+  room automatically. Your timetable, booking and karma are saved per user on this browser.
+- If one screen crashes it shows *Try again* instead of a blank page. An offline banner shows
+  when the connection drops.
 
 ---
 
