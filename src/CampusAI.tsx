@@ -142,8 +142,8 @@ export default function CampusAI({ buildContext, onViewSpace }) {
             right: 16,
             bottom: 96,
             zIndex: 30,
-            background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)",
-            color: "#08090B",
+            background: "linear-gradient(180deg, #F1ECFF, #A78BFA)",
+            color: "#0A0812",
             border: "none",
             borderRadius: 999,
             padding: "11px 16px",
@@ -153,7 +153,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
             fontWeight: 700,
             fontSize: 13,
             fontFamily: "'Space Grotesk', sans-serif",
-            boxShadow: "0 0 0 1px rgba(255,255,255,.35) inset, 0 10px 30px rgba(200,205,220,0.18)",
+            boxShadow: "0 0 0 1px rgba(255,255,255,.35) inset, 0 10px 30px rgba(139,92,246,0.45)",
             cursor: "pointer",
             maxWidth: "calc(100vw - 32px)",
           }}
@@ -184,15 +184,15 @@ export default function CampusAI({ buildContext, onViewSpace }) {
               width: "100%",
               maxWidth: 460,
               height: "min(78vh, 640px)",
-              background: "#0E0F12",
+              background: "#100D1B",
               borderRadius: "20px 20px 0 0",
               display: "flex",
               flexDirection: "column",
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid rgba(196,181,253,0.08)",
               borderBottom: "none",
               overflow: "hidden",
               fontFamily: "'Inter', sans-serif",
-              color: "#F4F5F7",
+              color: "#F4F1FF",
             }}
           >
             <div
@@ -201,18 +201,18 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "14px 16px",
-                borderBottom: "1px solid rgba(255,255,255,0.07)",
+                borderBottom: "1px solid rgba(196,181,253,0.07)",
                 flexShrink: 0,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 9, background: "#D3D7DF", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Sparkles size={16} color="#060607" />
+                <div style={{ width: 30, height: 30, borderRadius: 9, background: "#C4B5FD", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Sparkles size={16} color="#07060C" />
                 </div>
                 <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>CampusAI</div>
               </div>
               <button onClick={() => setOpen(false)} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer" }}>
-                <X size={18} color="#8B8F99" />
+                <X size={18} color="#A39CC4" />
               </button>
             </div>
 
@@ -222,9 +222,9 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                   <div
                     style={{
                       maxWidth: "85%",
-                      background: m.role === "user" ? "#D3D7DF" : m.isFallback ? "rgba(255,107,107,0.12)" : "#101114",
-                      color: m.role === "user" ? "#08090B" : m.isFallback ? "#FF8B8B" : "#F4F5F7",
-                      border: m.role === "user" ? "none" : "1px solid rgba(255,255,255,0.07)",
+                      background: m.role === "user" ? "#C4B5FD" : m.isFallback ? "rgba(255,107,107,0.12)" : "#120F1E",
+                      color: m.role === "user" ? "#0A0812" : m.isFallback ? "#FF8B8B" : "#F4F1FF",
+                      border: m.role === "user" ? "none" : "1px solid rgba(196,181,253,0.07)",
                       borderRadius: 14,
                       padding: "9px 12px",
                       fontSize: 13,
@@ -241,9 +241,9 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                           key={j}
                           onClick={() => handleAction(a)}
                           style={{
-                            background: "rgba(211,215,223,0.12)",
-                            color: "#E6E8EC",
-                            border: "1px solid rgba(211,215,223,0.3)",
+                            background: "rgba(167,139,250,0.12)",
+                            color: "#E9E3FF",
+                            border: "1px solid rgba(167,139,250,0.3)",
                             borderRadius: 999,
                             padding: "6px 11px",
                             fontSize: 11.5,
@@ -262,7 +262,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                 </div>
               ))}
               {loading && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#8B8F99", fontSize: 12.5 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#A39CC4", fontSize: 12.5 }}>
                   <Loader2 size={13} className="campusai-spin" /> CampusAI is thinking…
                 </div>
               )}
@@ -274,7 +274,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                   <button
                     key={i}
                     onClick={() => send(p.text)}
-                    style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "7px 11px", fontSize: 11.5, color: "#C9CCD3", cursor: "pointer" }}
+                    style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 11px", fontSize: 11.5, color: "#CFC7EC", cursor: "pointer" }}
                   >
                     {p.icon} {p.text}
                   </button>
@@ -282,16 +282,16 @@ export default function CampusAI({ buildContext, onViewSpace }) {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, padding: "10px 14px 14px", borderTop: "1px solid rgba(255,255,255,0.07)", flexShrink: 0, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, padding: "10px 14px 14px", borderTop: "1px solid rgba(196,181,253,0.07)", flexShrink: 0, alignItems: "center" }}>
               {speechSupported && (
                 <select
                   value={speechLang}
                   onChange={(e) => setSpeechLang(e.target.value)}
                   aria-label="Speech language"
-                  style={{ background: "#101114", color: "#8B8F99", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, fontSize: 11, padding: "6px 4px" }}
+                  style={{ background: "#120F1E", color: "#A39CC4", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, fontSize: 11, padding: "6px 4px" }}
                 >
                   {SPEECH_LANGS.map((l) => (
-                    <option key={l.code} value={l.code} style={{ background: "#101114" }}>
+                    <option key={l.code} value={l.code} style={{ background: "#120F1E" }}>
                       {l.label}
                     </option>
                   ))}
@@ -304,15 +304,15 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                   if (e.key === "Enter") send();
                 }}
                 placeholder="Ask CampusAI anything…"
-                style={{ flex: 1, background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 12px", color: "#F4F5F7", fontSize: 13, outline: "none" }}
+                style={{ flex: 1, background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 12, padding: "10px 12px", color: "#F4F1FF", fontSize: 13, outline: "none" }}
               />
               {speechSupported && (
                 <button
                   onClick={toggleListening}
                   aria-label={listening ? "Stop listening" : "Speak"}
                   style={{
-                    background: listening ? "#FF6B6B" : "#101114",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: listening ? "#FF6B6B" : "#120F1E",
+                    border: "1px solid rgba(196,181,253,0.08)",
                     borderRadius: 12,
                     width: 38,
                     height: 38,
@@ -323,7 +323,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                     flexShrink: 0,
                   }}
                 >
-                  {listening ? <MicOff size={16} color="#FFFFFF" /> : <Mic size={16} color="#8B8F99" />}
+                  {listening ? <MicOff size={16} color="#FFFFFF" /> : <Mic size={16} color="#A39CC4" />}
                 </button>
               )}
               <button
@@ -331,7 +331,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                 disabled={loading || !input.trim()}
                 aria-label="Send"
                 style={{
-                  background: "#E6E8EC",
+                  background: "#E9E3FF",
                   border: "none",
                   borderRadius: 12,
                   width: 38,
@@ -344,7 +344,7 @@ export default function CampusAI({ buildContext, onViewSpace }) {
                   flexShrink: 0,
                 }}
               >
-                <Send size={16} color="#060607" />
+                <Send size={16} color="#07060C" />
               </button>
             </div>
           </div>

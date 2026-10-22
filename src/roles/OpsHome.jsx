@@ -95,7 +95,7 @@ export default function OpsHome({ user, onOpenAnalytics }) {
           {wasting.sort((a, b) => b.powerKw - a.powerKw).map((n) => {
             const r = roomById.get(n.roomId);
             return (
-              <div key={n.roomId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "8px 10px", borderLeft: `3px solid ${C.bad}` }}>
+              <div key={n.roomId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(196,181,253,0.03)", borderRadius: 10, padding: "8px 10px", borderLeft: `3px solid ${C.bad}` }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{n.name}</div>
                   <div style={{ fontSize: 11, color: C.sub }}>{r?.block || ""} · since the {hhmm(n.ts)} reading</div>

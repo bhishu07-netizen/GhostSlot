@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 import { BookOpen, CalendarClock, Users, Clock, MapPin, AlertTriangle, CheckCircle2 } from "lucide-react";
 
-const C = { card: "#101114", border: "rgba(255,255,255,0.07)", text: "#F4F5F7", sub: "#8B8F99", muted: "#6B6F79", silver: "#D3D7DF", good: "#3DDC97", warn: "#F5B544", blue: "#5B9BEA" };
+const C = { card: "#120F1E", border: "rgba(196,181,253,0.07)", text: "#F4F1FF", sub: "#A39CC4", muted: "#857DA8", silver: "#C4B5FD", good: "#3DDC97", warn: "#F5B544", blue: "#5B9BEA" };
 const head = "'Space Grotesk', sans-serif";
 const mono = "'JetBrains Mono', monospace";
 const toMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
@@ -23,8 +23,8 @@ function Title({ icon: Icon, children, sub }) {
   );
 }
 const chip = (active) => ({
-  background: active ? "rgba(211,215,223,0.15)" : "rgba(255,255,255,0.04)", color: active ? "#E6E8EC" : "#C9CCD3",
-  border: `1px solid ${active ? "rgba(211,215,223,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 9, padding: "6px 10px", fontSize: 12, cursor: "pointer",
+  background: active ? "rgba(167,139,250,0.15)" : "rgba(196,181,253,0.04)", color: active ? "#E9E3FF" : "#CFC7EC",
+  border: `1px solid ${active ? "rgba(167,139,250,0.35)" : "rgba(196,181,253,0.1)"}`, borderRadius: 9, padding: "6px 10px", fontSize: 12, cursor: "pointer",
 });
 
 export default function FacultyHome({ user, day, time, mySlots, rooms, booking, onBook, onOpenTimetable }) {
@@ -59,7 +59,7 @@ export default function FacultyHome({ user, day, time, mySlots, rooms, booking, 
             const st = toMin(s.end) <= nowMin ? "done" : toMin(s.start) <= nowMin ? "now" : "later";
             const col = st === "now" ? C.good : st === "done" ? C.muted : C.blue;
             return (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "8px 10px", borderLeft: `3px solid ${col}`, opacity: st === "done" ? 0.6 : 1 }}>
+              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(196,181,253,0.03)", borderRadius: 10, padding: "8px 10px", borderLeft: `3px solid ${col}`, opacity: st === "done" ? 0.6 : 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{s.subject}</div>
                 <div style={{ fontFamily: mono, fontSize: 11.5, color: C.sub, whiteSpace: "nowrap" }}>{s.start}–{s.end}{st === "now" ? " · now" : ""}</div>
               </div>
@@ -73,10 +73,10 @@ export default function FacultyHome({ user, day, time, mySlots, rooms, booking, 
         <Title icon={BookOpen} sub={`Rooms free from ${time} for the whole class, smallest that fits first so big halls stay open.`}>Book a room for an extra class</Title>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 10 }}>
           <label style={{ fontSize: 11, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "1 1 120px" }}>Students
-            <input type="number" min="1" max="300" inputMode="numeric" value={size} onChange={(e) => setSize(e.target.value)} style={{ background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+            <input type="number" min="1" max="300" inputMode="numeric" value={size} onChange={(e) => setSize(e.target.value)} style={{ background: "#0B0914", border: "1px solid #322A50", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13 }} />
           </label>
           <label style={{ fontSize: 11, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "2 1 160px" }}>Class / topic (optional)
-            <input value={subject} maxLength={40} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. DBMS make-up class" style={{ background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13 }} />
+            <input value={subject} maxLength={40} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. DBMS make-up class" style={{ background: "#0B0914", border: "1px solid #322A50", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13 }} />
           </label>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
@@ -95,7 +95,7 @@ export default function FacultyHome({ user, day, time, mySlots, rooms, booking, 
           {fits.map(({ room, status }) => {
             const mine = booking?.roomId === room.id;
             return (
-              <div key={room.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "9px 10px" }}>
+              <div key={room.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "rgba(196,181,253,0.03)", borderRadius: 10, padding: "9px 10px" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{room.name}</div>
                   <div style={{ fontSize: 11, color: C.sub, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -107,7 +107,7 @@ export default function FacultyHome({ user, day, time, mySlots, rooms, booking, 
                 {mine ? (
                   <span style={{ fontSize: 11.5, color: C.good, display: "flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}><CheckCircle2 size={12} /> booked</span>
                 ) : (
-                  <button disabled={!!booking} onClick={() => onBook(room, duration, subject.trim() || "Extra class")} style={{ background: booking ? "rgba(255,255,255,0.06)" : "#D3D7DF", color: booking ? "#6B6F79" : "#060607", border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: booking ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
+                  <button disabled={!!booking} onClick={() => onBook(room, duration, subject.trim() || "Extra class")} style={{ background: booking ? "rgba(196,181,253,0.06)" : "#C4B5FD", color: booking ? "#857DA8" : "#07060C", border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: booking ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
                     Book {toHHMM(nowMin)}–{toHHMM(endMin)}
                   </button>
                 )}

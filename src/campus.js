@@ -103,6 +103,20 @@ export const MAP_ZONES = [
   { label: "Main Ground", x: 620, y: 440, w: 220, h: 140, kind: "ground" },
 ];
 
+// ── Scale + GPS calibration ─────────────────────────────────────────────────
+// Metres per map unit. DEMO VALUE: the schematic spans roughly 1.3 km across
+// its 1000 units. Fix this once the map is drawn to scale.
+export const MAP_METERS_PER_UNIT = 1.3;
+
+// GPS anchors: a real coordinate matched to its spot on this map. With three
+// or more (spread out, not in a line), the phone's GPS lands the "You" dot on
+// the map. To add one: stand at the spot, or long-press it in Google Maps and
+// copy the "30.7xxx, 76.5xxx" pair, then add { label, lat, lng, x, y } with x/y
+// from MAP_ZONES / ROOM_POSITIONS. Facilities staff can also calibrate on a
+// phone from the Map tab; those anchors stay on that device until copied here.
+// Left empty on purpose: no coordinate here is guessed.
+export const GEO_ANCHORS = [];
+
 // Optional: drop the official CU campus map at public/brand/campus-map.png and
 // set this to "/brand/campus-map.png". It draws under the pins; then adjust
 // the x/y values above so the pins sit on the right buildings.

@@ -10,8 +10,8 @@ import { Zap, Droplets, Building2, AlertTriangle, CheckCircle2, RefreshCw, Info,
 import { api } from "./api";
 
 export const C = {
-  card: "#101114", border: "rgba(255,255,255,0.07)", text: "#F4F5F7", sub: "#8B8F99", muted: "#6B6F79",
-  silver: "#D3D7DF", good: "#3DDC97", warn: "#F5B544", bad: "#FF6B6B", blue: "#5B9BEA",
+  card: "#120F1E", border: "rgba(196,181,253,0.07)", text: "#F4F1FF", sub: "#A39CC4", muted: "#857DA8",
+  silver: "#C4B5FD", good: "#3DDC97", warn: "#F5B544", bad: "#FF6B6B", blue: "#5B9BEA",
 };
 const STATE = {
   occupied: { color: C.blue, label: "In use" },
@@ -46,7 +46,7 @@ export function Stat({ value, label, tone }) {
     </Card>
   );
 }
-const tooltipStyle = { background: "#060607", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 12 };
+const tooltipStyle = { background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 };
 
 export default function Twin({ showLog = true }) {
   const [days, setDays] = useState(7);
@@ -148,7 +148,7 @@ export default function Twin({ showLog = true }) {
       {data.canManageAlerts ? (
         showLog && <LogReading rooms={data.rooms} buildings={data.buildings} onLogged={load} />
       ) : (
-        <div role="note" style={{ fontSize: 11.5, color: C.sub, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
+        <div role="note" style={{ fontSize: 11.5, color: C.sub, background: "rgba(196,181,253,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
           <Eye size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           <span><b style={{ color: C.text }}>View only.</b> Energy and water readings are logged, and alerts handled, by facilities staff.</span>
         </div>
@@ -182,7 +182,7 @@ export default function Twin({ showLog = true }) {
                   const n = nowById.get(r.id);
                   const s = STATE[n?.state] || { color: C.muted, label: "No data" };
                   return (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "6px 8px", borderLeft: `3px solid ${s.color}` }}>
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(196,181,253,0.03)", borderRadius: 8, padding: "6px 8px", borderLeft: `3px solid ${s.color}` }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
                         <div style={{ fontSize: 10.5, color: C.sub }}>
@@ -218,12 +218,12 @@ export default function Twin({ showLog = true }) {
             <tbody>
               {heat.rows.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ whiteSpace: "nowrap", paddingRight: 6, color: "#C9CCD3" }}>{r.name}</td>
+                  <td style={{ whiteSpace: "nowrap", paddingRight: 6, color: "#CFC7EC" }}>{r.name}</td>
                   {r.cells.map((v, i) => (
                     <td key={i} title={`${r.name}, ${heat.hours[i]}:00 — ${v === null ? "no data" : v + "% in use"}`}
                       style={{ width: 36, height: 24, textAlign: "center", borderRadius: 4, fontFamily: mono,
-                        background: v === null ? "rgba(255,255,255,0.03)" : `rgba(91,155,234,${0.08 + (v / 100) * 0.85})`,
-                        color: v !== null && v > 55 ? "#0B0C0F" : "#C9CCD3" }}>
+                        background: v === null ? "rgba(196,181,253,0.03)" : `rgba(91,155,234,${0.08 + (v / 100) * 0.85})`,
+                        color: v !== null && v > 55 ? "#0C0A15" : "#CFC7EC" }}>
                       {v === null ? "" : Math.round(v)}
                     </td>
                   ))}
@@ -240,7 +240,7 @@ export default function Twin({ showLog = true }) {
           <Title icon={Lightbulb} sub="Rooms that sit mostly empty during class hours.">Use what's already built</Title>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {data.suggestions.map((s) => (
-              <div key={s.roomId} style={{ fontSize: 12.5, color: "#C9CCD3", padding: "8px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 10 }}>{s.text}</div>
+              <div key={s.roomId} style={{ fontSize: 12.5, color: "#CFC7EC", padding: "8px 10px", background: "rgba(196,181,253,0.03)", borderRadius: 10 }}>{s.text}</div>
             ))}
           </div>
         </Card>
@@ -252,13 +252,13 @@ export default function Twin({ showLog = true }) {
         <div style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={daily} margin={{ top: 4, right: 6, left: -18, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
               <XAxis dataKey="day" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={44} />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.04)" }} formatter={(v) => `${v} kWh`} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(196,181,253,0.04)" }} formatter={(v) => `${v} kWh`} />
               <Legend wrapperStyle={{ fontSize: 11, color: C.sub }} />
-              <Bar dataKey="Used" stackId="e" fill={C.blue} stroke="#101114" strokeWidth={2} />
-              <Bar dataKey="Wasted" stackId="e" fill={C.bad} stroke="#101114" strokeWidth={2} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Used" stackId="e" fill={C.blue} stroke="#120F1E" strokeWidth={2} />
+              <Bar dataKey="Wasted" stackId="e" fill={C.bad} stroke="#120F1E" strokeWidth={2} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -268,8 +268,8 @@ export default function Twin({ showLog = true }) {
             const max = data.energy.rooms[0].wastedKwh || 1;
             return (
               <div key={r.roomId} style={{ display: "grid", gridTemplateColumns: "minmax(90px,130px) 1fr auto", alignItems: "center", gap: 8, fontSize: 12 }}>
-                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#C9CCD3" }}>{r.name}</span>
-                <span style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.05)" }}>
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#CFC7EC" }}>{r.name}</span>
+                <span style={{ height: 8, borderRadius: 4, background: "rgba(196,181,253,0.05)" }}>
                   <span style={{ display: "block", height: 8, borderRadius: 4, width: `${(r.wastedKwh / max) * 100}%`, background: C.bad }} />
                 </span>
                 <span style={{ fontFamily: mono, fontSize: 11, textAlign: "right" }}>{Math.round(r.wastedKwh)} kWh · {inr(r.wastedInr)}</span>
@@ -288,12 +288,12 @@ export default function Twin({ showLog = true }) {
         <div style={{ height: 200 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={waterSeries} margin={{ top: 6, right: 8, left: -14, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
               <XAxis dataKey="t" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} interval={23} />
               <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
               <Tooltip contentStyle={tooltipStyle} labelFormatter={(_, p) => p?.[0]?.payload?.full || ""} formatter={(v, _n, p) => [`${v} L${p.payload.flagged ? " · abnormal" : ""}`, "Water"]} />
               <Line type="monotone" dataKey="litres" stroke={C.blue} strokeWidth={2} isAnimationActive={false}
-                dot={(p) => p.payload.flagged ? <circle key={p.index} cx={p.cx} cy={p.cy} r={4} fill={C.bad} stroke="#101114" strokeWidth={2} /> : <g key={p.index} />} />
+                dot={(p) => p.payload.flagged ? <circle key={p.index} cx={p.cx} cy={p.cy} r={4} fill={C.bad} stroke="#120F1E" strokeWidth={2} /> : <g key={p.index} />} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -301,7 +301,7 @@ export default function Twin({ showLog = true }) {
         {data.water.episodes.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>None found.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {data.water.episodes.slice(0, 6).map((e) => (
-            <div key={e.buildingId + e.start} style={{ fontSize: 12, color: "#C9CCD3", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <div key={e.buildingId + e.start} style={{ fontSize: 12, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8 }}>
               <span>{e.building} · {ist(e.start, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}–{hhmm(e.end)}</span>
               <span style={{ fontFamily: mono, fontSize: 11 }}>+{e.excessLitres.toLocaleString("en-IN")} L</span>
             </div>
@@ -335,11 +335,12 @@ export function LogReading({ rooms, buildings, onLogged }) {
   const [litres, setLitres] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const field = { background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13, minWidth: 0 };
+  const field = { background: "#0B0914", border: "1px solid #322A50", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13, minWidth: 0 };
   const label = { fontSize: 11, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px" };
 
   async function submit(e) {
     e.preventDefault();
+    if (busy) return;
     setMsg(null);
     const body = kind === "water"
       ? { kind, buildingId, litres: Number(litres) }
@@ -398,8 +399,8 @@ export function LogReading({ rooms, buildings, onLogged }) {
 
 export function btn(active = false) {
   return {
-    background: active ? "rgba(211,215,223,0.15)" : "rgba(255,255,255,0.04)", color: active ? "#E6E8EC" : "#C9CCD3",
-    border: `1px solid ${active ? "rgba(211,215,223,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 9, padding: "5px 10px",
+    background: active ? "rgba(167,139,250,0.15)" : "rgba(196,181,253,0.04)", color: active ? "#E9E3FF" : "#CFC7EC",
+    border: `1px solid ${active ? "rgba(167,139,250,0.35)" : "rgba(196,181,253,0.1)"}`, borderRadius: 9, padding: "5px 10px",
     fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, marginTop: 0,
   };
 }
@@ -412,7 +413,7 @@ export function ManualLog({ items }) {
       <Title icon={ClipboardPen} sub="Readings typed in by facilities staff (replace the simulated value for that slot).">Recently logged by facilities</Title>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {items.map((m) => (
-          <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#C9CCD3", display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8 }}>
             <span>{m.kind === "water" ? "💧" : "⚡"} {m.target} · {ist(m.ts, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
             <span style={{ fontFamily: mono, fontSize: 11 }}>{m.text}</span>
           </div>
@@ -431,11 +432,11 @@ export function AlertList({ alerts, canManage, busyKey, onAck, empty = "Nothing 
         const tone = a.severity === "critical" ? C.bad : C.warn;
         const Icon = a.kind === "water_anomaly" ? Droplets : Zap;
         return (
-          <div key={a.key} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: `1px solid ${a.status === "open" ? tone + "55" : C.border}`, opacity: a.status === "resolved" ? 0.55 : 1 }}>
+          <div key={a.key} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 12, background: "rgba(196,181,253,0.03)", border: `1px solid ${a.status === "open" ? tone + "55" : C.border}`, opacity: a.status === "resolved" ? 0.55 : 1 }}>
             <Icon size={16} color={tone} style={{ flexShrink: 0, marginTop: 2 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title} <span style={{ fontSize: 10.5, color: tone, fontFamily: mono }}>{a.severity.toUpperCase()}</span></div>
-              <div style={{ fontSize: 12, color: "#C9CCD3", marginTop: 2 }}>{a.detail}</div>
+              <div style={{ fontSize: 12, color: "#CFC7EC", marginTop: 2 }}>{a.detail}</div>
               <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
                 {canManage && a.status === "open" && <button disabled={busyKey === a.key} onClick={() => onAck(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}

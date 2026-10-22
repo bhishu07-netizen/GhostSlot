@@ -7,10 +7,10 @@ import { ShieldCheck, CheckCircle2, Loader2, AlertTriangle, Trash2 } from "lucid
 import { api } from "../api";
 import { BrandMark, Wordmark } from "../brand/BrandMark";
 
-const C = { text: "#F4F5F7", sub: "#8B8F99", muted: "#5F636D", line: "rgba(255,255,255,0.08)", line2: "#2E3138", green: "#3DDC97", red: "#FF8B8B", amber: "#F5B544", ink: "#08090B" };
-const input = { width: "100%", background: "#0A0B0D", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "11px 12px", color: C.text, fontSize: 13.5, outline: "none" };
-const primary = { background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)", color: C.ink, border: "none", borderRadius: 12, padding: "12px 14px", fontWeight: 700, fontSize: 14.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
-const ghost = { background: "#16171B", color: C.text, border: `1px solid ${C.line2}`, borderRadius: 12, padding: "10px 12px", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
+const C = { text: "#F4F1FF", sub: "#A39CC4", muted: "#6A6390", line: "rgba(196,181,253,0.08)", line2: "#322A50", green: "#3DDC97", red: "#FF8B8B", amber: "#F5B544", ink: "#0A0812" };
+const input = { width: "100%", background: "#0B0914", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "11px 12px", color: C.text, fontSize: 13.5, outline: "none" };
+const primary = { background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: C.ink, border: "none", borderRadius: 12, padding: "12px 14px", fontWeight: 700, fontSize: 14.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
+const ghost = { background: "#1A1630", color: C.text, border: `1px solid ${C.line2}`, borderRadius: 12, padding: "10px 12px", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const fmt = (ts) => new Date(ts).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -48,6 +48,7 @@ export default function GuardianConsent() {
   }, [code]);
 
   async function approve() {
+    if (busy) return;
     setErr("");
     if (!gName.trim() || !relation || !d || !m || !y) { setErr("Fill in your name, relation and date of birth."); return; }
     if (!consent) { setErr("Tick the consent box to approve."); return; }
@@ -60,6 +61,7 @@ export default function GuardianConsent() {
     finally { setBusy(false); }
   }
   async function withdraw() {
+    if (busy) return;
     setErr(""); setBusy(true);
     try { await api("/auth/guardian/withdraw", { method: "POST", body: { code, confirm: true } }); setDone("withdrawn"); }
     catch (e) { setErr(e.message); }
@@ -68,8 +70,8 @@ export default function GuardianConsent() {
 
   const child = info?.child;
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", minHeight: "100vh", color: C.text, background: "radial-gradient(640px 420px at 50% 10%, rgba(190,196,212,.10), transparent 65%), #050506" }}>
-      <style>{`* { box-sizing: border-box; } input::placeholder { color: #5F636D; } select option { background: #0E0F12; color: #F4F5F7; } @keyframes gs-spin { to { transform: rotate(360deg); } } .gs-spin { animation: gs-spin 0.9s linear infinite; }`}</style>
+    <div style={{ fontFamily: "'Inter', sans-serif", minHeight: "100vh", color: C.text, background: "radial-gradient(640px 420px at 50% 10%, rgba(190,196,212,.10), transparent 65%), #07060C" }}>
+      <style>{`* { box-sizing: border-box; } input::placeholder { color: #6A6390; } select option { background: #100D1B; color: #F4F1FF; } @keyframes gs-spin { to { transform: rotate(360deg); } } .gs-spin { animation: gs-spin 0.9s linear infinite; }`}</style>
       <main style={{ maxWidth: 520, margin: "0 auto", padding: "28px 20px 40px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <BrandMark size={40} /><Wordmark size={22} />
@@ -152,13 +154,13 @@ export default function GuardianConsent() {
 }
 
 function Card({ children }) {
-  return <div style={{ background: "#0E0F12", border: `1px solid ${C.line}`, borderRadius: 16, padding: 16 }}>{children}</div>;
+  return <div style={{ background: "#100D1B", border: `1px solid ${C.line}`, borderRadius: 16, padding: 16 }}>{children}</div>;
 }
 function List({ title, items }) {
   return (
     <div>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.5, color: C.sub, marginBottom: 6 }}>{title.toUpperCase()}</div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.6, color: "#C9CCD3" }}>{items.map((t) => <li key={t}>{t}</li>)}</ul>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.6, color: "#CFC7EC" }}>{items.map((t) => <li key={t}>{t}</li>)}</ul>
     </div>
   );
 }

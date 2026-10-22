@@ -10,19 +10,19 @@ import PrivacyNotice from "./PrivacyNotice";
 
 // ── SkillTwin palette ───────────────────────────────────────────────────────
 const C = {
-  bg: "#050506", card: "#0E0F12", raised: "#16171B", line: "rgba(255,255,255,0.07)", line2: "#2E3138",
-  text: "#F4F5F7", sub: "#8B8F99", muted: "#5F636D", silver: "#D3D7DF", ink: "#08090B",
+  bg: "#07060C", card: "#100D1B", raised: "#1A1630", line: "rgba(196,181,253,0.07)", line2: "#322A50",
+  text: "#F4F1FF", sub: "#A39CC4", muted: "#6A6390", silver: "#C4B5FD", ink: "#0A0812",
   green: "#3DDC97", amber: "#F5B544", red: "#FF8B8B",
 };
 const silverBtn = {
-  background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)", color: C.ink, border: "none", borderRadius: 12,
+  background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: C.ink, border: "none", borderRadius: 12,
   padding: "12px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14.5, cursor: "pointer",
   boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 6px 18px rgba(0,0,0,.35)",
   display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
 };
 const ghostBtn = { background: C.raised, color: C.text, border: `1px solid ${C.line2}`, borderRadius: 12, padding: "12px 14px", fontWeight: 600, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 };
-const inputStyle = { width: "100%", background: "#0A0B0D", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "12px 12px 12px 36px", color: C.text, fontSize: 13.5, outline: "none" };
-const selectStyle = { flex: 1, minWidth: 0, background: "#0A0B0D", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "12px 10px", color: C.text, fontSize: 13.5, outline: "none", appearance: "auto" };
+const inputStyle = { width: "100%", background: "#0B0914", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "12px 12px 12px 36px", color: C.text, fontSize: 13.5, outline: "none" };
+const selectStyle = { flex: 1, minWidth: 0, background: "#0B0914", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "12px 10px", color: C.text, fontSize: 13.5, outline: "none", appearance: "auto" };
 
 // Same rules the server enforces (server/security.js) — checked here only
 // to give instant feedback; the server is the authority.
@@ -68,7 +68,7 @@ function Stepper({ step }) {
           <React.Fragment key={s}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               <div style={{ width: 22, height: 22, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700,
-                background: active ? "linear-gradient(180deg, #ECEEF2, #B9BEC9)" : done ? "rgba(61,220,151,0.14)" : C.raised,
+                background: active ? "linear-gradient(180deg, #F1ECFF, #A78BFA)" : done ? "rgba(61,220,151,0.14)" : C.raised,
                 color: active ? C.ink : done ? C.green : C.sub, border: active ? "none" : `1px solid ${done ? "rgba(61,220,151,0.35)" : C.line2}` }}>
                 {done ? "✓" : n}
               </div>
@@ -91,7 +91,7 @@ function RolePicker({ role, setRole }) {
           const m = ROLE_META[id]; const Icon = m.icon; const on = role === id;
           return (
             <button key={id} role="radio" aria-checked={on} onClick={() => setRole(id)}
-              style={{ background: on ? "rgba(255,255,255,0.09)" : C.card, border: `1px solid ${on ? "rgba(211,215,223,0.45)" : C.line}`, borderRadius: 12, padding: "10px 6px",
+              style={{ background: on ? "rgba(196,181,253,0.09)" : C.card, border: `1px solid ${on ? "rgba(167,139,250,0.45)" : C.line}`, borderRadius: 12, padding: "10px 6px",
                 color: on ? C.text : C.sub, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700 }}>
               <Icon size={16} color={on ? C.silver : C.muted} />{m.label}
             </button>
@@ -119,6 +119,7 @@ function AgeGate({ role, onVerified, onBlocked, onBack }) {
   const years = useMemo(() => Array.from({ length: 101 }, (_, i) => thisYear - i), [thisYear]);
 
   async function verify() {
+    if (busy) return;
     setError("");
     if (!d || !m || !y) { setError("Pick your day, month and year of birth."); return; }
     const dob = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -144,9 +145,9 @@ function AgeGate({ role, onVerified, onBlocked, onBack }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: 16, boxShadow: "0 1px 0 rgba(255,255,255,.05) inset, 0 0 60px rgba(200,205,220,0.07)" }}>
+      <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(196,181,253,0.10)", borderRadius: 18, padding: 16, boxShadow: "0 1px 0 rgba(196,181,253,.05) inset, 0 0 60px rgba(139,92,246,0.45)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: verified ? "rgba(61,220,151,0.14)" : "linear-gradient(180deg, #ECEEF2, #B9BEC9)", border: verified ? "1px solid rgba(61,220,151,0.4)" : "none", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 250ms" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: verified ? "rgba(61,220,151,0.14)" : "linear-gradient(180deg, #F1ECFF, #A78BFA)", border: verified ? "1px solid rgba(61,220,151,0.4)" : "none", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 250ms" }}>
             {verified ? <CheckCircle2 size={22} color={C.green} /> : <ShieldCheck size={22} color={C.ink} />}
           </div>
           <div>
@@ -179,7 +180,7 @@ function AgeGate({ role, onVerified, onBlocked, onBack }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 12 }}>
           {promises.map(({ icon: Icon, t, s }) => (
-            <div key={t} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "8px 8px" }}>
+            <div key={t} style={{ background: "rgba(196,181,253,0.03)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "8px 8px" }}>
               <Icon size={14} color={C.silver} />
               <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, lineHeight: 1.25 }}>{t}</div>
               <div style={{ fontSize: 10, color: C.sub, marginTop: 2, lineHeight: 1.3 }}>{s}</div>
@@ -216,12 +217,12 @@ function GuardianPending({ pending, onDone }) {
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: 18 }}>
+      <div style={{ background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(196,181,253,0.10)", borderRadius: 18, padding: 18 }}>
         <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>Almost there: ask a parent or guardian</div>
         <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginTop: 6 }}>
           Send them this link. They'll see what GhostSlot stores, confirm they're your parent or guardian, and approve. Then log in with your roll number and password.
         </div>
-        <div style={{ marginTop: 12, background: "#0A0B0D", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "10px 12px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, wordBreak: "break-all", color: C.silver }}>{pending.link}</div>
+        <div style={{ marginTop: 12, background: "#0B0914", border: `1px solid ${C.line2}`, borderRadius: 12, padding: "10px 12px", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5, wordBreak: "break-all", color: C.silver }}>{pending.link}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button onClick={share} style={{ ...silverBtn, flex: 1, padding: "10px 12px", fontSize: 13.5 }}>Send to parent</button>
           <button onClick={copy} style={{ ...ghostBtn, flex: 1, padding: "10px 12px" }}>{copied ? "Copied ✓" : "Copy link"}</button>
@@ -237,7 +238,7 @@ function AgeBlocked({ until, onDone }) {
   const when = until ? new Date(until).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 18, padding: 18, textAlign: "center" }}>
+      <div style={{ background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(196,181,253,0.10)", borderRadius: 18, padding: 18, textAlign: "center" }}>
         <div style={{ width: 52, height: 52, borderRadius: 16, margin: "0 auto 10px", background: C.raised, border: `1px solid ${C.line2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LockKeyhole size={24} color={C.silver} />
         </div>
@@ -291,6 +292,7 @@ export default function AuthScreen({ onAuthed }) {
   }
 
   async function login() {
+    if (busy) return;
     setError("");
     if (!roll.trim() || !pass) { setError(`Enter your ${meta.idLabel} and password.`); return; }
     setBusy(true);
@@ -315,6 +317,7 @@ export default function AuthScreen({ onAuthed }) {
   const strong = checks.every((c) => c.ok);
 
   async function createAccount() {
+    if (busy) return;
     setError("");
     if (!strong) { setError("Your password needs every tick below."); return; }
     if (pass !== pass2) { setError("Passwords don't match. Focus."); return; }
@@ -335,12 +338,12 @@ export default function AuthScreen({ onAuthed }) {
   const blocked = mode === "signup" && blockedUntil;
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", minHeight: "100vh", color: C.text, background: "radial-gradient(640px 420px at 50% 18%, rgba(190,196,212,.12), transparent 65%), #050506" }}>
+    <div style={{ fontFamily: "'Inter', sans-serif", minHeight: "100vh", color: C.text, background: "radial-gradient(640px 420px at 50% 18%, rgba(190,196,212,.12), transparent 65%), #07060C" }}>
       <style>{`
         * { box-sizing: border-box; }
-        input::placeholder { color: #5F636D; }
-        select option { background: #0E0F12; color: #F4F5F7; }
-        input:focus, select:focus { border-color: #6B707C !important; box-shadow: 0 0 0 3px rgba(211,215,223,.10); }
+        input::placeholder { color: #6A6390; }
+        select option { background: #100D1B; color: #F4F1FF; }
+        input:focus, select:focus { border-color: #857DA8 !important; box-shadow: 0 0 0 3px rgba(167,139,250,.10); }
         @keyframes gs-spin { to { transform: rotate(360deg); } }
         .gs-spin { animation: gs-spin 0.9s linear infinite; }
       `}</style>
@@ -353,7 +356,7 @@ export default function AuthScreen({ onAuthed }) {
 
         <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 18, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 4 }}>
           {[["login", "Login"], ["signup", "Sign up"]].map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={mode === id} onClick={() => switchMode(id)} style={{ flex: 1, background: mode === id ? "rgba(255,255,255,0.09)" : "transparent", color: mode === id ? C.text : C.sub, border: "none", borderRadius: 10, padding: "10px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{label}</button>
+            <button key={id} role="tab" aria-selected={mode === id} onClick={() => switchMode(id)} style={{ flex: 1, background: mode === id ? "rgba(196,181,253,0.09)" : "transparent", color: mode === id ? C.text : C.sub, border: "none", borderRadius: 10, padding: "10px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{label}</button>
           ))}
         </div>
 
@@ -372,7 +375,7 @@ export default function AuthScreen({ onAuthed }) {
               const d = config.demos?.[role] || config.demo;
               return (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 2 }}>
-                  <div style={{ fontSize: 11, color: "#6B6F79", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div style={{ fontSize: 11, color: "#857DA8", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
                     {meta.label.toLowerCase()} demo → {d.roll} · {d.password}
                   </div>
                   <button type="button" onClick={() => { setRoll(d.roll); setPass(d.password); }} style={{ background: "none", border: `1px solid ${C.line2}`, color: C.sub, borderRadius: 999, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>Fill {meta.label.toLowerCase()} demo</button>
@@ -448,7 +451,7 @@ export default function AuthScreen({ onAuthed }) {
                   ))}
                 </div>
                 <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: C.sub, lineHeight: 1.45, marginTop: 4, cursor: "pointer" }}>
-                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2, accentColor: "#D3D7DF" }} />
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2, accentColor: "#C4B5FD" }} />
                   <span>I've read the <button type="button" onClick={() => setShowPrivacy(true)} style={{ background: "none", border: "none", padding: 0, color: C.text, textDecoration: "underline", cursor: "pointer", fontSize: 12.5 }}>privacy notice</button> and agree to GhostSlot using my name, {meta.idLabel}{meta.departments ? ` and ${meta.deptLabel.toLowerCase()}` : ""} to run my account.</span>
                 </label>
                 <ErrorBox>{error}</ErrorBox>

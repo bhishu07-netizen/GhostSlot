@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Papa from "papaparse";
 import {
   MapPin, Clock, Users, TrendingUp, Bell, Plug, Volume1,
@@ -6,7 +6,7 @@ import {
   CheckCircle2, Radar, Flame, MessageCircleMore, CalendarClock, Plus, Trash2,
   LogOut, Upload, Download, FileWarning,
   Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
-  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck,
+  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Cell
@@ -23,6 +23,11 @@ import FacultyHome from "./roles/FacultyHome";
 import OpsHome from "./roles/OpsHome";
 import { StaffWorkLog } from "./roles/StaffWorkLog";
 import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } from "./campus";
+import WhereAmI from "./WhereAmI";
+import { DoorQrCodes, GpsCalibration } from "./MapTools";
+import ErrorBoundary from "./ErrorBoundary";
+import { placeList, findPlace, walkMinutes, walkLabel, loadLocation, saveLocation } from "./location";
+import { loadState, saveState, cleanSlots, cleanRoomSlots } from "./persist";
 
 // =========================================================================
 // CONSTANTS
@@ -138,9 +143,9 @@ const SQUAD = [
 
 
 const vibeMeta = {
-  silent: { icon: VolumeX, label: "silent zone", color: "#C9CDD6" },
-  quiet: { icon: VolumeX, label: "quiet-ish", color: "#D3D7DF" },
-  medium: { icon: Volume1, label: "background hum", color: "#E6E8EC" },
+  silent: { icon: VolumeX, label: "silent zone", color: "#D2C8F5" },
+  quiet: { icon: VolumeX, label: "quiet-ish", color: "#C4B5FD" },
+  medium: { icon: Volume1, label: "background hum", color: "#E9E3FF" },
   loud: { icon: Volume1, label: "chaos energy", color: "#FF6B6B" },
 };
 
@@ -328,7 +333,8 @@ function calculateRoomScore(room, status, prefs) {
   const requirementsScore = reqs.length ? reqs.filter((r) => room.tags.includes(r)).length / reqs.length : 1;
 
   const walkMin = parseInt((room.walk.match(/\d+/) || [5])[0], 10) || 5;
-  const baseDistance = Math.max(0, 1 - (walkMin - 1) / 9);
+  // With a real "you are here", distance spans up to ~15 min and counts more.
+  const baseDistance = room.walkFromYou ? Math.max(0, 1 - (walkMin - 1) / 14) : Math.max(0, 1 - (walkMin - 1) / 9);
   let distanceScore = baseDistance;
   if (prefs.location && prefs.location !== "Anywhere") distanceScore = room.block === prefs.location ? 1 : 0.15;
 
@@ -340,7 +346,9 @@ function calculateRoomScore(room, status, prefs) {
   let capacityScore = 0.8;
   if (prefs.capacity) capacityScore = room.capacity >= prefs.capacity ? 1 : 0.15;
 
-  const weights = { duration: 0.35, requirements: 0.25, distance: 0.15, vibe: 0.10, util: 0.10, capacity: 0.05 };
+  const weights = room.walkFromYou
+    ? { duration: 0.32, requirements: 0.22, distance: 0.24, vibe: 0.09, util: 0.08, capacity: 0.05 }
+    : { duration: 0.35, requirements: 0.25, distance: 0.15, vibe: 0.10, util: 0.10, capacity: 0.05 };
   const raw =
     weights.duration * durationScore +
     weights.requirements * requirementsScore +
@@ -405,7 +413,7 @@ function GhostMeter({ pct, height = 10 }) {
   return (
     <div style={{ display: "flex", gap: 3 }}>
       {Array.from({ length: blocks }).map((_, i) => (
-        <div key={i} style={{ width: 8, height, borderRadius: 2, background: i < filled ? color : "rgba(255,255,255,0.08)", transition: "background 300ms ease" }} />
+        <div key={i} style={{ width: 8, height, borderRadius: 2, background: i < filled ? color : "rgba(196,181,253,0.08)", transition: "background 300ms ease" }} />
       ))}
     </div>
   );
@@ -413,7 +421,7 @@ function GhostMeter({ pct, height = 10 }) {
 
 function Pill({ children, tone = "default" }) {
   const tones = {
-    default: { bg: "rgba(255,255,255,0.06)", color: "#C9CDD6", border: "rgba(255,255,255,0.12)" },
+    default: { bg: "rgba(196,181,253,0.06)", color: "#D2C8F5", border: "rgba(196,181,253,0.12)" },
     lime: { bg: "rgba(61,220,151,0.12)", color: "#3DDC97", border: "rgba(61,220,151,0.3)" },
     coral: { bg: "rgba(255,107,107,0.12)", color: "#FF8B8B", border: "rgba(255,107,107,0.3)" },
     amber: { bg: "rgba(245,181,68,0.12)", color: "#F5B544", border: "rgba(245,181,68,0.3)" },
@@ -445,24 +453,24 @@ function statusMeta(room, status, prefs, booking) {
 function DemoRoomCsiBadge({ csi, onOpenDevDashboard }) {
   if (!csi) {
     return (
-      <div style={{ marginTop: 2, fontSize: 11, color: "#6B6F79" }}>⚪ CSI status unavailable — backend not reachable</div>
+      <div style={{ marginTop: 2, fontSize: 11, color: "#857DA8" }}>⚪ CSI status unavailable — backend not reachable</div>
     );
   }
   const m = CSI_STATE_META[csi.state] || CSI_STATE_META.UNKNOWN;
   return (
-    <div style={{ marginTop: 2, display: "flex", flexDirection: "column", gap: 4, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 10px" }}>
+    <div style={{ marginTop: 2, display: "flex", flexDirection: "column", gap: 4, background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 10, padding: "8px 10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
         <span style={{ fontSize: 12, fontWeight: 700 }}>{m.dot} {m.label}</span>
         {csi.mode === "simulation" && <Pill tone="amber">⚠ simulation mode</Pill>}
       </div>
-      <div style={{ fontSize: 11, color: "#8B8F99" }}>
+      <div style={{ fontSize: 11, color: "#A39CC4" }}>
         Wi-Fi sensing: {csi.state === "OFFLINE" ? "unreachable" : "active"} · last update: {csi.secondsSinceUpdate == null ? "never" : `${csi.secondsSinceUpdate}s ago`}
       </div>
       {csi.state === "CHANGE_DETECTED" && (
         <div style={{ fontSize: 10.5, color: "#D9B26A" }}>A significant Wi-Fi channel change was detected — this is not a confirmed occupancy count.</div>
       )}
       {onOpenDevDashboard && (
-        <button onClick={onOpenDevDashboard} style={{ alignSelf: "flex-start", marginTop: 2, background: "none", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "#8B8F99", cursor: "pointer" }}>
+        <button onClick={onOpenDevDashboard} style={{ alignSelf: "flex-start", marginTop: 2, background: "none", border: "1px solid rgba(196,181,253,0.12)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "#A39CC4", cursor: "pointer" }}>
           🛠 Developer view
         </button>
       )}
@@ -477,14 +485,14 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
   const isMine = booking && booking.roomId === room.id;
   const canBook = room.bookable !== false && status.free && !hasActiveBooking;
   return (
-    <div style={{ background: "#101114", border: highlight ? "1px solid rgba(211,215,223,0.4)" : "1px solid rgba(255,255,255,0.07)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ background: "#120F1E", border: highlight ? "1px solid rgba(167,139,250,0.4)" : "1px solid rgba(196,181,253,0.07)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 700, color: "#F4F5F7" }}>{room.name}</div>
-          <div style={{ fontSize: 12.5, color: "#8B8F99", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 700, color: "#F4F1FF" }}>{room.name}</div>
+          <div style={{ fontSize: 12.5, color: "#A39CC4", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
             <MapPin size={12} /> {room.floor} · {room.walk}
           </div>
-          {room.description && <div style={{ fontSize: 11.5, color: "#5F636D", marginTop: 4, lineHeight: 1.45 }}>{room.description}</div>}
+          {room.description && <div style={{ fontSize: 11.5, color: "#6A6390", marginTop: 4, lineHeight: 1.45 }}>{room.description}</div>}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
           {typeof scoreBadge === "number" && <Pill tone="lime">{scoreBadge}% match</Pill>}
@@ -494,7 +502,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <GhostMeter pct={room.sensing === "wifi" ? (status.crowd || 0) : room.util7d} />
-        <span style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>
+        <span style={{ fontSize: 11, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>
           {room.sensing === "wifi" ? (status.closed ? `opens ${status.busyUntil}` : `Wi-Fi crowd · ${status.crowd}% full`) : `${room.util7d}% booked this week`}
         </span>
       </div>
@@ -509,16 +517,16 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
       {room.csiEnabled && <DemoRoomCsiBadge csi={csi} onOpenDevDashboard={onOpenDevDashboard} />}
 
       {!room.bookable ? (
-        <div style={{ marginTop: 4, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#8B8F99", textAlign: "center" }}>
+        <div style={{ marginTop: 4, background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#A39CC4", textAlign: "center" }}>
           {status.closed ? `Closed now · opens ${status.busyUntil}` : "Walk in · no booking needed"}
         </div>
       ) : isMine ? (
-        <div style={{ marginTop: 4, background: "rgba(211,215,223,0.12)", border: "1px solid rgba(211,215,223,0.3)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#C9CDD6", textAlign: "center", fontWeight: 700 }}>
+        <div style={{ marginTop: 4, background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#D2C8F5", textAlign: "center", fontWeight: 700 }}>
           🔒 Reserved by you
         </div>
       ) : (
         <button onClick={() => canBook && onBook(room, status)} disabled={!canBook} style={{
-          marginTop: 4, background: canBook ? "#D3D7DF" : "rgba(255,255,255,0.06)", color: canBook ? "#060607" : "#6B6F79",
+          marginTop: 4, background: canBook ? "#C4B5FD" : "rgba(196,181,253,0.06)", color: canBook ? "#07060C" : "#857DA8",
           border: "none", borderRadius: 12, padding: "10px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14,
           cursor: canBook ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         }}>
@@ -530,16 +538,16 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
 }
 
 function TimeDayPicker({ day, setDay, time, setTime, live, onLive, onDemo }) {
-  const ctl = { background: "transparent", color: "#F4F5F7", border: "none", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" };
-  const chip = (active) => ({ background: active ? "rgba(61,220,151,0.14)" : "rgba(255,255,255,0.05)", color: active ? "#3DDC97" : "#C9CDD6",
-    border: `1px solid ${active ? "rgba(61,220,151,0.35)" : "rgba(255,255,255,0.12)"}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, cursor: "pointer", whiteSpace: "nowrap" });
+  const ctl = { background: "transparent", color: "#F4F1FF", border: "none", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" };
+  const chip = (active) => ({ background: active ? "rgba(61,220,151,0.14)" : "rgba(196,181,253,0.05)", color: active ? "#3DDC97" : "#D2C8F5",
+    border: `1px solid ${active ? "rgba(61,220,151,0.35)" : "rgba(196,181,253,0.12)"}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, cursor: "pointer", whiteSpace: "nowrap" });
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "8px 10px" }}>
-      <CalendarClock size={14} color="#8B8F99" />
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 14, padding: "8px 10px" }}>
+      <CalendarClock size={14} color="#A39CC4" />
       <select aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)} style={ctl}>
-        {PICKER_DAYS.map((d) => <option key={d} value={d} style={{ background: "#101114" }}>{d}</option>)}
+        {PICKER_DAYS.map((d) => <option key={d} value={d} style={{ background: "#120F1E" }}>{d}</option>)}
       </select>
-      <span style={{ color: "#2A2D35" }}>|</span>
+      <span style={{ color: "#2D2648" }}>|</span>
       <input aria-label="Time" type="time" value={time} onChange={(e) => e.target.value && setTime(e.target.value)} style={ctl} />
       {live
         ? <span title="Following the real time in India" style={chip(true)}>● live IST</span>
@@ -553,18 +561,18 @@ function TimeDayPicker({ day, setDay, time, setTime, live, onLive, onDemo }) {
 
 function CsvImport({ label, hint, onFile, onTemplate, summary }) {
   return (
-    <div style={{ background: "#121317", border: "1px dashed rgba(211,215,223,0.35)", borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ background: "#141123", border: "1px dashed rgba(167,139,250,0.35)", borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#F4F5F7" }}>{label}</div>
-        <button onClick={onTemplate} style={{ background: "none", border: "none", color: "#8B8F99", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#F4F1FF" }}>{label}</div>
+        <button onClick={onTemplate} style={{ background: "none", border: "none", color: "#A39CC4", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
           <Download size={11} /> template
         </button>
       </div>
-      <label style={{ background: "#D3D7DF", color: "#060607", border: "none", borderRadius: 10, padding: "9px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+      <label style={{ background: "#C4B5FD", color: "#07060C", border: "none", borderRadius: 10, padding: "9px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         <Upload size={14} /> upload CSV
         <input type="file" accept=".csv" onChange={onFile} style={{ display: "none" }} />
       </label>
-      <div style={{ fontSize: 10.5, color: "#6B6F79", display: "flex", alignItems: "flex-start", gap: 4 }}>
+      <div style={{ fontSize: 10.5, color: "#857DA8", display: "flex", alignItems: "flex-start", gap: 4 }}>
         <FileWarning size={11} style={{ marginTop: 1, flexShrink: 0 }} />
         <span>{hint}</span>
       </div>
@@ -601,19 +609,19 @@ function SlotForm({ day, onAdd, roomOptions, existingSlotsFor }) {
   }
 
   return (
-    <div style={{ background: "#16171B", borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ background: "#1A1630", borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       {roomOptions && (
-        <select value={roomId} onChange={(e) => setRoomId(e.target.value)} style={{ background: "#101114", color: "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }}>
+        <select value={roomId} onChange={(e) => setRoomId(e.target.value)} style={{ background: "#120F1E", color: "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }}>
           {roomOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
       )}
       <div style={{ display: "flex", gap: 8 }}>
-        <input type="time" value={start} onChange={(e) => setStart(e.target.value)} style={{ flex: 1, background: "#101114", color: "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }} />
-        <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={{ flex: 1, background: "#101114", color: "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }} />
+        <input type="time" value={start} onChange={(e) => setStart(e.target.value)} style={{ flex: 1, background: "#120F1E", color: "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }} />
+        <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={{ flex: 1, background: "#120F1E", color: "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }} />
       </div>
-      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="subject / class code" style={{ background: "#101114", color: "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5, outline: "none" }} />
+      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="subject / class code" style={{ background: "#120F1E", color: "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5, outline: "none" }} />
       {error && <div style={{ fontSize: 11.5, color: "#FF8B8B" }}>{error}</div>}
-      <button onClick={submit} style={{ background: "#E6E8EC", color: "#060607", border: "none", borderRadius: 10, padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+      <button onClick={submit} style={{ background: "#E9E3FF", color: "#07060C", border: "none", borderRadius: 10, padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
         <Plus size={13} /> add to {day}'s timetable
       </button>
     </div>
@@ -623,13 +631,13 @@ function SlotForm({ day, onAdd, roomOptions, existingSlotsFor }) {
 function GhostSlotInfo() {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: 12 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: "none", border: "none", color: "#8B8F99", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
-        <Info size={13} color="#D3D7DF" /> What's a Ghost Slot? <span style={{ marginLeft: "auto" }}>{open ? "▾" : "▸"}</span>
+    <div style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 14, padding: 12 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: "none", border: "none", color: "#A39CC4", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
+        <Info size={13} color="#C4B5FD" /> What's a Ghost Slot? <span style={{ marginLeft: "auto" }}>{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <div style={{ fontSize: 12, color: "#C9CCD3", lineHeight: 1.5, marginTop: 8 }}>
-          A <b style={{ color: "#E6E8EC" }}>Ghost Slot</b> is a campus space that's technically assigned or timetabled — but sitting empty right now. GhostSlot discovers these hidden pockets of capacity and matches them to students who actually need space.
+        <div style={{ fontSize: 12, color: "#CFC7EC", lineHeight: 1.5, marginTop: 8 }}>
+          A <b style={{ color: "#E9E3FF" }}>Ghost Slot</b> is a campus space that's technically assigned or timetabled — but sitting empty right now. GhostSlot discovers these hidden pockets of capacity and matches them to students who actually need space.
         </div>
       )}
     </div>
@@ -641,26 +649,26 @@ function GhostSlotInfo() {
 // =========================================================================
 function CsiDevDashboard({ csi, onClose }) {
   const row = (label, value) => (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: 12.5 }}>
-      <span style={{ color: "#8B8F99" }}>{label}</span>
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#F4F5F7" }}>{value}</span>
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(196,181,253,0.06)", fontSize: 12.5 }}>
+      <span style={{ color: "#A39CC4" }}>{label}</span>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#F4F1FF" }}>{value}</span>
     </div>
   );
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30 }} />
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#0E0F12", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#100D1B", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
         <div style={{ padding: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>🛠 Demo Room — CSI Dev Dashboard</div>
-            <button onClick={onClose} style={{ background: "none", border: "none", color: "#8B8F99", cursor: "pointer" }}><X size={18} /></button>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "#A39CC4", cursor: "pointer" }}><X size={18} /></button>
           </div>
           {!csi ? (
             <div style={{ fontSize: 12.5, color: "#FF8B8B" }}>Backend unreachable — no CSI status available.</div>
           ) : (
             <>
               {csi.mode === "simulation" && (
-                <div style={{ marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: "#060607", background: "#E6E8EC", borderRadius: 10, padding: "6px 10px" }}>⚠ SIMULATION MODE — values are synthetic, not real CSI</div>
+                <div style={{ marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: "#07060C", background: "#E9E3FF", borderRadius: 10, padding: "6px 10px" }}>⚠ SIMULATION MODE — values are synthetic, not real CSI</div>
               )}
               {row("Mode", csi.mode)}
               {row("CSI state", csi.state)}
@@ -676,7 +684,7 @@ function CsiDevDashboard({ csi, onClose }) {
               {row("Smoothing window", `${csi.config.smoothingWindow} samples`)}
               {row("Change threshold", `${csi.config.changeThreshold}σ`)}
               {row("Offline timeout", `${csi.config.offlineTimeoutMs} ms`)}
-              <div style={{ marginTop: 10, fontSize: 11, color: "#6B6F79", lineHeight: 1.5 }}>
+              <div style={{ marginTop: 10, fontSize: 11, color: "#857DA8", lineHeight: 1.5 }}>
                 CHANGE_DETECTED means the room's Wi-Fi channel deviated from its calibrated baseline beyond the threshold above — it is a signal-level detection, not a validated occupancy or people count.
               </div>
             </>
@@ -728,13 +736,13 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30 }} />
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#0E0F12", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#100D1B", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 2px" }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)" }} />
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(196,181,253,0.15)" }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 18px 14px" }}>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 17 }}>
-            Sort &amp; Filter {activeCount > 0 && <span style={{ background: "#D3D7DF", color: "#08090B", borderRadius: 999, padding: "2px 9px", fontSize: 12, marginLeft: 6 }}>{activeCount}</span>}
+            Sort &amp; Filter {activeCount > 0 && <span style={{ background: "#C4B5FD", color: "#0A0812", borderRadius: 999, padding: "2px 9px", fontSize: 12, marginLeft: 6 }}>{activeCount}</span>}
           </div>
           <button onClick={clearAll} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Clear all</button>
         </div>
@@ -742,10 +750,10 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
         <div style={{ overflowY: "auto", padding: "0 18px 110px", display: "flex", flexDirection: "column", gap: 24 }}>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>SORT BY</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>SORT BY</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
               {SORT_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => setSort(opt.id)} style={{ background: prefs.sortBy === opt.id ? "#D3D7DF" : "#16171B", color: prefs.sortBy === opt.id ? "#08090B" : "#C9CCD3", border: "none", borderRadius: 14, padding: "12px 6px", cursor: "pointer", fontSize: 12, fontWeight: 700, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, transition: "background 150ms" }}>
+                <button key={opt.id} onClick={() => setSort(opt.id)} style={{ background: prefs.sortBy === opt.id ? "#C4B5FD" : "#1A1630", color: prefs.sortBy === opt.id ? "#0A0812" : "#CFC7EC", border: "none", borderRadius: 14, padding: "12px 6px", cursor: "pointer", fontSize: 12, fontWeight: 700, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, transition: "background 150ms" }}>
                   <span style={{ fontSize: 20 }}>{opt.emoji}</span>{opt.label}
                 </button>
               ))}
@@ -753,10 +761,10 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>ROOM TYPE</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>ROOM TYPE</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {ROOM_TYPE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => toggle("roomType", opt.id)} style={{ background: prefs.roomType === opt.id ? "#E6E8EC" : "#16171B", color: prefs.roomType === opt.id ? "#060607" : "#C9CCD3", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                <button key={opt.id} onClick={() => toggle("roomType", opt.id)} style={{ background: prefs.roomType === opt.id ? "#E9E3FF" : "#1A1630", color: prefs.roomType === opt.id ? "#07060C" : "#CFC7EC", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
                   {opt.emoji} {opt.label}
                 </button>
               ))}
@@ -764,10 +772,10 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>WALK TIME</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>WALK TIME</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {WALK_OPTIONS.map(opt => (
-                <button key={String(opt.id)} onClick={() => setWalk(opt.id)} style={{ background: prefs.walkTime === opt.id ? "#E6E8EC" : "#16171B", color: prefs.walkTime === opt.id ? "#060607" : "#C9CCD3", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                <button key={String(opt.id)} onClick={() => setWalk(opt.id)} style={{ background: prefs.walkTime === opt.id ? "#E9E3FF" : "#1A1630", color: prefs.walkTime === opt.id ? "#07060C" : "#CFC7EC", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
                   {opt.label}
                 </button>
               ))}
@@ -775,10 +783,10 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>CAPACITY</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>CAPACITY</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {CAP_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => setCap(opt.id)} style={{ background: prefs.capacity === opt.id ? "#E6E8EC" : "#16171B", color: prefs.capacity === opt.id ? "#060607" : "#C9CCD3", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                <button key={opt.id} onClick={() => setCap(opt.id)} style={{ background: prefs.capacity === opt.id ? "#E9E3FF" : "#1A1630", color: prefs.capacity === opt.id ? "#07060C" : "#CFC7EC", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
                   {opt.label}
                 </button>
               ))}
@@ -786,10 +794,10 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>VIBE</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>VIBE</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {[{v: null, l: "Any"}, {v: "silent", l: "🤫 Silent"}, {v: "quiet", l: "🔇 Quiet-ish"}, {v: "medium", l: "🔉 Background hum"}, {v: "loud", l: "🔊 Chaos energy"}].map(({v, l}) => (
-                <button key={String(v)} onClick={() => setPrefs(p => ({ ...p, vibe: p.vibe === v ? null : v }))} style={{ background: prefs.vibe === v ? "#E6E8EC" : "#16171B", color: prefs.vibe === v ? "#060607" : "#C9CCD3", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                <button key={String(v)} onClick={() => setPrefs(p => ({ ...p, vibe: p.vibe === v ? null : v }))} style={{ background: prefs.vibe === v ? "#E9E3FF" : "#1A1630", color: prefs.vibe === v ? "#07060C" : "#CFC7EC", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
                   {l}
                 </button>
               ))}
@@ -797,30 +805,30 @@ function FiltersPanel({ prefs, setPrefs, onClose, activeCount }) {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B6F79", marginBottom: 10, letterSpacing: 1.5 }}>MUST HAVE</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#857DA8", marginBottom: 10, letterSpacing: 1.5 }}>MUST HAVE</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {[["plug", "⚡ Charging"], ["wifi+", "📶 Wi-Fi+"], ["ac", "❄️ AC"]].map(([tag, label]) => (
-                <button key={tag} onClick={() => toggleReq(tag)} style={{ background: prefs.requirements.includes(tag) ? "#D3D7DF" : "#16171B", color: prefs.requirements.includes(tag) ? "#08090B" : "#C9CCD3", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
+                <button key={tag} onClick={() => toggleReq(tag)} style={{ background: prefs.requirements.includes(tag) ? "#C4B5FD" : "#1A1630", color: prefs.requirements.includes(tag) ? "#0A0812" : "#CFC7EC", border: "none", borderRadius: 999, padding: "9px 15px", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
                   {label}
                 </button>
               ))}
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#16171B", borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1A1630", borderRadius: 14, padding: "12px 14px" }}>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>Free rooms only</div>
-              <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 2 }}>Hide occupied rooms from results</div>
+              <div style={{ fontSize: 11.5, color: "#A39CC4", marginTop: 2 }}>Hide occupied rooms from results</div>
             </div>
-            <div onClick={() => setPrefs(p => ({ ...p, freeOnly: !p.freeOnly }))} style={{ width: 46, height: 26, borderRadius: 13, background: prefs.freeOnly ? "#D3D7DF" : "#1E2026", cursor: "pointer", position: "relative", transition: "background 200ms", flexShrink: 0 }}>
-              <div style={{ width: 18, height: 18, borderRadius: "50%", background: prefs.freeOnly ? "#08090B" : "#F4F5F7", position: "absolute", top: 4, left: prefs.freeOnly ? 24 : 4, transition: "left 200ms" }} />
+            <div onClick={() => setPrefs(p => ({ ...p, freeOnly: !p.freeOnly }))} style={{ width: 46, height: 26, borderRadius: 13, background: prefs.freeOnly ? "#C4B5FD" : "#221C3B", cursor: "pointer", position: "relative", transition: "background 200ms", flexShrink: 0 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: prefs.freeOnly ? "#0A0812" : "#F4F1FF", position: "absolute", top: 4, left: prefs.freeOnly ? 24 : 4, transition: "left 200ms" }} />
             </div>
           </div>
 
         </div>
 
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 18px 28px", background: "linear-gradient(transparent, #0E0F12 35%)" }}>
-          <button onClick={onClose} style={{ width: "100%", background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)", color: "#08090B", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 6px 18px rgba(0,0,0,.35)", border: "none", borderRadius: 14, padding: "14px", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 18px 28px", background: "linear-gradient(transparent, #100D1B 35%)" }}>
+          <button onClick={onClose} style={{ width: "100%", background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: "#0A0812", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 6px 18px rgba(0,0,0,.35)", border: "none", borderRadius: 14, padding: "14px", fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "'Space Grotesk', sans-serif" }}>
             See results
           </button>
         </div>
@@ -840,7 +848,29 @@ export default function GhostSlot() {
   const [aiStatus, setAiStatus] = useState("idle"); // idle | loading | gemini | local | error
   const [aiError, setAiError] = useState(null);
   const [matchMyFreeTime, setMatchMyFreeTime] = useState(false);
-  const [booking, setBooking] = useState(null); // { roomId, slotId, roomName, secondsLeft }
+  // An active booking stores its real end time, so the countdown stays right
+  // across reloads, sleeping phones and background tabs.
+  const [bookingRaw, setBooking] = useState(null); // { roomId, slotId, roomName, endsAt }
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!bookingRaw) return;
+    setNowTick(Date.now());
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [bookingRaw]);
+  const booking = useMemo(() => (bookingRaw ? { ...bookingRaw, secondsLeft: Math.max(0, Math.round((bookingRaw.endsAt - nowTick) / 1000)) } : null), [bookingRaw, nowTick]);
+  const bookingRef = useRef(null);
+  useEffect(() => { bookingRef.current = bookingRaw; }, [bookingRaw]);
+  // Ignore a second tap on the same action within a short window.
+  const lastTap = useRef({});
+  const once = (k, ms = 800) => { const n = Date.now(); if (n - (lastTap.current[k] || 0) < ms) return false; lastTap.current[k] = n; return true; };
+  const queryLock = useRef(false);
+  // Where you are on campus (GPS, picked, map tap or a door QR).
+  const [you, setYouRaw] = useState(null);
+  const [mapFocusId, setMapFocusId] = useState(null);
+  const [anchorsVersion, setAnchorsVersion] = useState(0);
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+  const restoredFor = useRef(null);
   const [karma, setKarma] = useState(74);
   const [extraBooked, setExtraBooked] = useState(0);
   const [pinged, setPinged] = useState({});
@@ -865,10 +895,37 @@ export default function GhostSlot() {
   useEffect(() => {
     if (!currentUser) return;
     setTab(ROLE_TABS[role][0].id);
-    setMySlots(role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS);
     setTtSubTab("mine");
     setShowNotifs(false);
+    // Restore this person's saved timetable, booking and karma (this browser).
+    const saved = loadState(currentUser.id);
+    const savedSlots = saved && cleanSlots(saved.mySlots);
+    const savedRooms = saved && cleanRoomSlots(saved.roomSlots);
+    setMySlots(savedSlots || (role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS));
+    let b = saved && saved.booking;
+    const bookingOk = b && typeof b.endsAt === "number" && b.endsAt > Date.now() && typeof b.roomId === "string";
+    const rooms = savedRooms || SEED_ROOM_SLOTS;
+    // Drop leftover "Reserved (you)" slots except the live booking.
+    const tidy = Object.fromEntries(Object.entries(rooms).map(([k, v]) => [k, v.filter((x) => !String(x.id).startsWith("book_") || (bookingOk && x.id === b.slotId))]));
+    setRoomSlots(tidy);
+    setBooking(bookingOk ? b : null);
+    bookingRef.current = bookingOk ? b : null;
+    if (saved && Number.isFinite(saved.karma)) setKarma(saved.karma);
+    // Where you are: a fresh door scan wins over the saved spot.
+    let loc = loadLocation(currentUser.id);
+    try {
+      const at = sessionStorage.getItem("gs.pendingAt");
+      if (at) {
+        sessionStorage.removeItem("gs.pendingAt");
+        const place = findPlace(placeList(ROOM_META), at);
+        if (place) { loc = { x: place.x, y: place.y, label: place.label, placeId: place.id, source: "qr", at: Date.now() }; setToast(`You're at ${place.label}. Showing the closest free spots from here.`); }
+      }
+    } catch { /* ignore */ }
+    setYouRaw(loc);
+    restoredFor.current = currentUser.id;
   }, [currentUser?.id, role]);
+
+  const setYou = (loc) => { setYouRaw(loc); if (currentUser) saveLocation(currentUser.id, loc); if (loc) setToast(`Got it. Walking times now start from ${loc.label.replace(/^near /, "")}.`); };
 
   // Restore an existing session (httpOnly cookie) and check if AI is on.
   useEffect(() => {
@@ -898,6 +955,11 @@ export default function GhostSlot() {
   const pickerProps = { day, setDay, time, setTime, live: clock.live, onLive: goLive, onDemo: goDemo };
   const [mySlots, setMySlots] = useState(SEED_MY_SLOTS);
   const [roomSlots, setRoomSlots] = useState(SEED_ROOM_SLOTS);
+  // Save on every change (only after this user's state has been restored).
+  useEffect(() => {
+    if (!currentUser || restoredFor.current !== currentUser.id) return;
+    saveState(currentUser.id, { mySlots, roomSlots, booking: bookingRaw, karma });
+  }, [currentUser?.id, mySlots, roomSlots, bookingRaw, karma]);
   const [ttSubTab, setTtSubTab] = useState("mine");
   const [myCsvSummary, setMyCsvSummary] = useState(null);
   const [roomCsvSummary, setRoomCsvSummary] = useState(null);
@@ -924,22 +986,33 @@ export default function GhostSlot() {
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
+  // Release the room when the booking's time is up (checked every tick, so a
+  // phone that slept through the end time releases it as soon as it wakes).
   useEffect(() => {
-    if (!booking) return;
-    const t = setInterval(() => {
-      setBooking((b) => {
-        if (!b) return b;
-        if (b.secondsLeft <= 1) {
-          clearInterval(t);
-          setRoomSlots((rs) => ({ ...rs, [b.roomId]: (rs[b.roomId] || []).filter((s) => s.id !== b.slotId) }));
-          setToast("Time's up. Room released automatically. Vacate before the next class catches you red-handed.");
-          return null;
-        }
-        return { ...b, secondsLeft: b.secondsLeft - 1 };
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [booking]);
+    if (!bookingRaw || nowTick < bookingRaw.endsAt) return;
+    const b = bookingRaw;
+    setRoomSlots((rs) => ({ ...rs, [b.roomId]: (rs[b.roomId] || []).filter((s) => s.id !== b.slotId) }));
+    setBooking(null);
+    bookingRef.current = null;
+    setToast("Time's up. Room released automatically. Vacate before the next class catches you red-handed.");
+  }, [bookingRaw, nowTick]);
+
+  // Online / offline banner.
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener("online", on); window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  // A door QR opens GhostSlot as /?at=<place id>. Remember it (it may have to
+  // wait for login), then tidy the address bar.
+  useEffect(() => {
+    try {
+      const at = new URLSearchParams(window.location.search).get("at");
+      if (at && /^[A-Za-z0-9:_-]{1,60}$/.test(at)) sessionStorage.setItem("gs.pendingAt", at);
+      if (at) window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -952,8 +1025,13 @@ export default function GhostSlot() {
   const myAvailableNow = useMemo(() => getAvailableDuration(myFreeWindows, nowMin), [myFreeWindows, nowMin]);
 
   const roomsWithStatus = useMemo(() => {
-    return ROOM_META.map((r) => ({ room: r, status: spaceStatus(r, roomSlots[r.id] || [], day, nowMin) }));
-  }, [roomSlots, day, nowMin]);
+    return ROOM_META.map((r) => {
+      const mins = you && r.pos ? walkMinutes(you, r.pos) : null;
+      const room = mins != null ? { ...r, walk: walkLabel(mins), walkFromYou: true } : r;
+      return { room, status: spaceStatus(r, roomSlots[r.id] || [], day, nowMin) };
+    });
+  }, [roomSlots, day, nowMin, you]);
+  const places = useMemo(() => placeList(ROOM_META), []);
 
   // hard filters: capacity, location, roomType, walkTime, freeOnly, "only my free time"
   const hardFiltered = useMemo(() => {
@@ -1042,7 +1120,12 @@ export default function GhostSlot() {
   }
 
   async function runQuery(raw) {
-    if (!raw || !raw.trim()) return;
+    if (!raw || !raw.trim() || queryLock.current) return;
+    raw = raw.slice(0, 300);
+    queryLock.current = true;
+    try { await runQueryInner(raw); } finally { queryLock.current = false; }
+  }
+  async function runQueryInner(raw) {
 
     // No API key configured: go straight to the local parser — same
     // behavior the app had before the API key integration.
@@ -1074,23 +1157,33 @@ export default function GhostSlot() {
 
   function handleBook(room, status, wanted, subject) {
     if (role === "facilities") return; // facilities staff don't book rooms
+    if (!once("book", 1200)) return;   // double tap / double click
+    if (bookingRef.current) { setToast("You already have a room. End it from the bar at the top first."); return; }
+    if (room.bookable === false) { setToast(`${room.name} is walk-in only. No booking needed.`); return; }
+    // Re-check right now: the card on screen might be a few seconds old.
+    const fresh = spaceStatus(room, roomSlots[room.id] || [], day, nowMin);
+    if (!fresh.free) { setToast(`${room.name} just got taken. Pick the next best one.`); return; }
+    status = fresh;
     const duration = Math.max(15, Math.min(wanted || prefs.duration || 30, status.freeFor));
     const endMin = nowMin + duration;
     const slotId = `book_${Date.now()}`;
     const label = role === "faculty" ? `${subject || "Extra class"} (you)` : "Reserved (you)";
     setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: label }] }));
-    setBooking({ roomId: room.id, slotId, roomName: room.name, secondsLeft: duration * 60 });
+    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000 };
+    bookingRef.current = nb;
+    setBooking(nb);
     if (role === "faculty") setExtraBooked((n) => n + 1);
     setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}.` : `${room.name} is yours for ${fmtMin(duration)}. Don't ghost it.`);
   }
   function endEarly() {
-    if (!booking) return;
+    if (!booking || !once("end", 1000)) return;
+    bookingRef.current = null;
     setRoomSlots((rs) => ({ ...rs, [booking.roomId]: (rs[booking.roomId] || []).filter((s) => s.id !== booking.slotId) }));
     setBooking(null);
     if (isStudent) { setKarma((k) => k + 5); setToast("Ended early. +5 room karma — the campus thanks you."); }
     else setToast("Room released early. It's back on the map for everyone.");
   }
-  function ping(person) { setPinged((p) => ({ ...p, [person]: true })); setToast(`${person} has been pinged. No cap, they'll probably see it eventually.`); }
+  function ping(person) { if (pinged[person] || !once(`ping:${person}`)) return; setPinged((p) => ({ ...p, [person]: true })); setToast(`${person} has been pinged. No cap, they'll probably see it eventually.`); }
 
   function addMySlot(slot) { setMySlots((s) => [...s, slot]); setToast("Added to your timetable. The AI now knows your business."); }
   function removeMySlot(id) { setMySlots((s) => s.filter((x) => x.id !== id)); }
@@ -1264,7 +1357,7 @@ export default function GhostSlot() {
 
   if (!authChecked) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050506" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#07060C" }}>
         <BrandMark size={48} glow />
       </div>
     );
@@ -1280,13 +1373,19 @@ export default function GhostSlot() {
   const roleMeta = ROLE_META[role];
 
   return (
-    <div className="gs-root" style={{ fontFamily: "'Inter', sans-serif", background: "#060607", minHeight: "100vh", color: "#F4F5F7" }}>
+    <div className="gs-root" style={{ fontFamily: "'Inter', sans-serif", background: "#07060C", minHeight: "100vh", color: "#F4F1FF" }}>
       <style>{`
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { display: none; }
-        input::placeholder { color: #6B6F79; }
+        input::placeholder { color: #857DA8; }
         @keyframes gs-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .gs-spin { animation: gs-spin 0.9s linear infinite; }
+        @media print {
+          body * { visibility: hidden !important; }
+          .gs-qr-grid, .gs-qr-grid * { visibility: visible !important; }
+          .gs-qr-grid { position: absolute; left: 0; top: 0; width: 100%; grid-template-columns: repeat(3, 1fr) !important; }
+          .gs-qr-card { break-inside: avoid; border: 1px solid #ccc; }
+        }
         /* ── mobile defaults ── */
         .gs-root { max-width: 460px; margin: 0 auto; padding-bottom: 84px; }
         .gs-sidebar { display: none; }
@@ -1294,10 +1393,10 @@ export default function GhostSlot() {
         /* ── desktop overrides ── */
         @media (min-width: 768px) {
           .gs-root { max-width: none; margin: 0; padding-bottom: 0; display: flex; height: 100vh; overflow: hidden; }
-          .gs-sidebar { display: flex; flex-direction: column; width: 240px; min-width: 240px; background: #08090B; border-right: 1px solid rgba(255,255,255,0.07); height: 100vh; position: sticky; top: 0; overflow-y: auto; }
+          .gs-sidebar { display: flex; flex-direction: column; width: 240px; min-width: 240px; background: #0A0812; border-right: 1px solid rgba(196,181,253,0.07); height: 100vh; position: sticky; top: 0; overflow-y: auto; }
           .gs-main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
           .gs-mobile-topbar { display: none !important; }
-          .gs-desktop-topbar { display: flex !important; align-items: center; justify-content: space-between; padding: 18px 32px; border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 0; background: #060607; z-index: 5; flex-shrink: 0; }
+          .gs-desktop-topbar { display: flex !important; align-items: center; justify-content: space-between; padding: 18px 32px; border-bottom: 1px solid rgba(196,181,253,0.06); position: sticky; top: 0; background: #07060C; z-index: 5; flex-shrink: 0; }
           .gs-bottom-nav { display: none !important; }
           .gs-tab-wrap { padding: 0 32px 32px; flex: 1; }
           .gs-room-grid { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; flex-direction: unset !important; }
@@ -1309,23 +1408,23 @@ export default function GhostSlot() {
 
       {/* desktop sidebar */}
       <aside className="gs-sidebar">
-        <div style={{ padding: "22px 20px 18px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ padding: "22px 20px 18px", borderBottom: "1px solid rgba(196,181,253,0.07)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <BrandMark size={34} />
             <Wordmark size={20} />
           </div>
-          <div style={{ fontSize: 10.5, color: "#4A4E57" }}>campus space intelligence</div>
+          <div style={{ fontSize: 10.5, color: "#4E4670" }}>campus space intelligence</div>
         </div>
         <nav style={{ padding: "14px 12px", flex: 1 }}>
           {navItems.map(n => { const Icon = n.icon; const active = view === n.id; return (
-            <button key={n.id} onClick={() => setTab(n.id)} style={{ width: "100%", background: active ? "rgba(211,215,223,0.15)" : "none", border: active ? "1px solid rgba(211,215,223,0.25)" : "1px solid transparent", borderRadius: 10, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, color: active ? "#E6E8EC" : "#6B6F79", marginBottom: 4, textAlign: "left", transition: "all 150ms" }}>
+            <button key={n.id} onClick={() => setTab(n.id)} style={{ width: "100%", background: active ? "rgba(167,139,250,0.15)" : "none", border: active ? "1px solid rgba(167,139,250,0.25)" : "1px solid transparent", borderRadius: 10, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, color: active ? "#E9E3FF" : "#857DA8", marginBottom: 4, textAlign: "left", transition: "all 150ms" }}>
               <Icon size={17} /><span style={{ fontWeight: 600, fontSize: 13.5 }}>{n.label}</span>
             </button>
           );})}
         </nav>
-        <div style={{ padding: "14px 20px", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F5F7" }}>{currentUser.name}</div>
-          <div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
+        <div style={{ padding: "14px 20px", borderTop: "1px solid rgba(196,181,253,0.07)" }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F1FF" }}>{currentUser.name}</div>
+          <div style={{ fontSize: 11, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => handleLogout()} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}><LogOut size={11} /> logout</button>
@@ -1338,18 +1437,18 @@ export default function GhostSlot() {
       <div className="gs-desktop-topbar">
         <div>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 20 }}>{navItems.find(n => n.id === view)?.label}</div>
-          <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 2 }}>{roleMeta.tagline}</div>
+          <div style={{ fontSize: 11.5, color: "#A39CC4", marginTop: 2 }}>{roleMeta.tagline}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TimeDayPicker {...pickerProps} />
           {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
-          <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
-            <Bell size={16} color="#F4F5F7" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
+          <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
+            <Bell size={16} color="#F4F1FF" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
           </button>
         </div>
       </div>
       {/* mobile topbar */}
-      <div className="gs-mobile-topbar" style={{ padding: "20px 18px 12px", position: "sticky", top: 0, background: "#060607", zIndex: 5 }}>
+      <div className="gs-mobile-topbar" style={{ padding: "20px 18px 12px", position: "sticky", top: 0, background: "#07060C", zIndex: 5 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <BrandMark size={34} />
@@ -1357,18 +1456,18 @@ export default function GhostSlot() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
-            <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
-              <Bell size={16} color="#F4F5F7" />
+            <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
+              <Bell size={16} color="#F4F1FF" />
               <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
             </button>
           </div>
         </div>
-        <div style={{ fontSize: 12.5, color: "#8B8F99", marginTop: 6, marginBottom: 8 }}>{roleMeta.tagline}</div>
+        <div style={{ fontSize: 12.5, color: "#A39CC4", marginTop: 6, marginBottom: 8 }}>{roleMeta.tagline}</div>
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           {roleMeta.steps.map(([t, sub], i) => (
-            <div key={t} style={{ flex: 1, background: "#101114", borderRadius: 10, padding: "6px 8px", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#E6E8EC" }}>{i + 1}. {t}</div>
-              <div style={{ fontSize: 9.5, color: "#6B6F79" }}>{sub}</div>
+            <div key={t} style={{ flex: 1, background: "#120F1E", borderRadius: 10, padding: "6px 8px", border: "1px solid rgba(196,181,253,0.06)" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#E9E3FF" }}>{i + 1}. {t}</div>
+              <div style={{ fontSize: 9.5, color: "#857DA8" }}>{sub}</div>
             </div>
           ))}
         </div>
@@ -1376,37 +1475,49 @@ export default function GhostSlot() {
       </div>{/* end gs-mobile-topbar */}
 
       {showNotifs && (
-        <div style={{ margin: "0 18px 10px", background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ margin: "0 18px 10px", background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
           {(ROLE_NOTIFS[role] || ROLE_NOTIFS.student).map((n) => (
             <div key={n.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <Sparkles size={13} color="#E6E8EC" style={{ marginTop: 2, flexShrink: 0 }} />
-              <div><div style={{ fontSize: 13, lineHeight: 1.4 }}>{n.text}</div><div style={{ fontSize: 10.5, color: "#6B6F79", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{n.time}</div></div>
+              <Sparkles size={13} color="#E9E3FF" style={{ marginTop: 2, flexShrink: 0 }} />
+              <div><div style={{ fontSize: 13, lineHeight: 1.4 }}>{n.text}</div><div style={{ fontSize: 10.5, color: "#857DA8", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{n.time}</div></div>
             </div>
           ))}
         </div>
       )}
 
       {booking && (
-        <div style={{ margin: "0 18px 14px", background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)", color: "#08090B", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 10px 30px rgba(0,0,0,.45)", borderRadius: 16, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ margin: "0 18px 14px", background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: "#0A0812", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 10px 30px rgba(0,0,0,.45)", borderRadius: 16, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 11, color: "rgba(8,9,11,0.6)", fontFamily: "'JetBrains Mono', monospace" }}>RESERVED BY YOU</div>
+            <div style={{ fontSize: 11, color: "rgba(10,8,18,0.6)", fontFamily: "'JetBrains Mono', monospace" }}>RESERVED BY YOU</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>{booking.roomName}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 500 }}>{fmt(booking.secondsLeft)}</div>
-            <button onClick={endEarly} style={{ marginTop: 4, fontSize: 11, background: "#08090B", border: "none", color: "#F4F5F7", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>I'm out</button>
+            <div style={{ display: "flex", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
+              <button onClick={() => { setMapFocusId(booking.roomId); setTab("map"); }} aria-label="Directions to my room" style={{ fontSize: 11, background: "rgba(10,8,18,0.12)", border: "1px solid rgba(10,8,18,0.35)", color: "#0A0812", borderRadius: 8, padding: "4px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3, fontWeight: 600 }}><Navigation size={11} /> Go</button>
+              <button onClick={endEarly} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#F4F1FF", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>I'm out</button>
+            </div>
           </div>
         </div>
       )}
 
+      {!online && (
+        <div role="status" style={{ margin: "0 18px 12px", background: "rgba(245,181,68,0.1)", border: "1px solid rgba(245,181,68,0.35)", color: "#F5B544", borderRadius: 12, padding: "8px 12px", fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
+          <WifiOff size={13} /> You're offline. Rooms shown from the last update; booking and AI search come back when you reconnect.
+        </div>
+      )}
+
+      <ErrorBoundary resetKey={view}>
       <div className="gs-tab-wrap">
       {view === "find" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <GhostSlotInfo />
 
-          <div style={{ background: "#101114", border: "1px solid rgba(211,215,223,0.3)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <WhereAmI places={places} location={you} onSet={setYou} onClear={() => setYou(null)} />
+
+          <div style={{ background: "#120F1E", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: "#C9CDD6" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: "#D2C8F5" }}>
                 <Wand2 size={13} /> AI-assisted room search
               </div>
               {aiConfigured ? (
@@ -1424,17 +1535,17 @@ export default function GhostSlot() {
                 onKeyDown={(e) => { if (e.key === "Enter") runQuery(query); }}
                 placeholder="e.g. quiet place near CSE for 90 minutes with charging"
                 disabled={aiStatus === "loading"}
-                style={{ width: "100%", background: "#060607", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "11px 46px 11px 12px", color: "#F4F5F7", fontSize: 13, outline: "none", opacity: aiStatus === "loading" ? 0.6 : 1 }}
+                style={{ width: "100%", background: "#07060C", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 12, padding: "11px 46px 11px 12px", color: "#F4F1FF", fontSize: 13, outline: "none", opacity: aiStatus === "loading" ? 0.6 : 1 }}
               />
-              <button onClick={() => runQuery(query)} disabled={aiStatus === "loading"} style={{ position: "absolute", right: 6, top: 6, background: "#D3D7DF", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: aiStatus === "loading" ? "default" : "pointer" }}>
-                {aiStatus === "loading" ? <RefreshCw size={14} color="#060607" className="gs-spin" /> : <ArrowRight size={14} color="#060607" />}
+              <button onClick={() => runQuery(query)} disabled={aiStatus === "loading"} style={{ position: "absolute", right: 6, top: 6, background: "#C4B5FD", border: "none", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: aiStatus === "loading" ? "default" : "pointer" }}>
+                {aiStatus === "loading" ? <RefreshCw size={14} color="#07060C" className="gs-spin" /> : <ArrowRight size={14} color="#07060C" />}
               </button>
             </div>
-            <button onClick={runDemoQuery} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#6B6F79", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={runDemoQuery} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#857DA8", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
               <Sparkle size={11} /> Try: "{DEMO_QUERY}"
             </button>
             {understood.length > 0 && (
-              <div style={{ fontSize: 11.5, color: "#E6E8EC", background: "rgba(211,215,223,0.08)", borderRadius: 10, padding: "8px 10px" }}>
+              <div style={{ fontSize: 11.5, color: "#E9E3FF", background: "rgba(167,139,250,0.08)", borderRadius: 10, padding: "8px 10px" }}>
                 <b>AI understood:</b> {understood.join(" · ")}
               </div>
             )}
@@ -1447,7 +1558,7 @@ export default function GhostSlot() {
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {CATEGORIES.map((c) => (
-              <button key={String(c.id)} onClick={() => setPrefs((p) => ({ ...p, category: c.id }))} style={{ flexShrink: 0, background: prefs.category === c.id ? "#E6E8EC" : "#101114", color: prefs.category === c.id ? "#060607" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              <button key={String(c.id)} onClick={() => setPrefs((p) => ({ ...p, category: c.id }))} style={{ flexShrink: 0, background: prefs.category === c.id ? "#E9E3FF" : "#120F1E", color: prefs.category === c.id ? "#07060C" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                 {c.label}
               </button>
             ))}
@@ -1455,7 +1566,7 @@ export default function GhostSlot() {
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {DURATION_PRESETS.map((d) => (
-              <button key={d} onClick={() => setPrefs((p) => ({ ...p, duration: d }))} style={{ flexShrink: 0, background: prefs.duration === d ? "#D3D7DF" : "#101114", color: prefs.duration === d ? "#08090B" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              <button key={d} onClick={() => setPrefs((p) => ({ ...p, duration: d }))} style={{ flexShrink: 0, background: prefs.duration === d ? "#C4B5FD" : "#120F1E", color: prefs.duration === d ? "#0A0812" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 {d} min
               </button>
             ))}
@@ -1463,25 +1574,25 @@ export default function GhostSlot() {
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {LOCATIONS.map((loc) => (
-              <button key={loc} onClick={() => setPrefs((p) => ({ ...p, location: loc }))} style={{ flexShrink: 0, background: prefs.location === loc ? "#E6E8EC" : "#101114", color: prefs.location === loc ? "#060607" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+              <button key={loc} onClick={() => setPrefs((p) => ({ ...p, location: loc }))} style={{ flexShrink: 0, background: prefs.location === loc ? "#E9E3FF" : "#120F1E", color: prefs.location === loc ? "#07060C" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                 <Building2 size={11} /> {loc === "Anywhere" ? "Anywhere" : `Near ${loc.replace(" Block", "").replace("Central ", "")}`}
               </button>
             ))}
           </div>
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-            <button onClick={() => setMatchMyFreeTime((q) => !q)} style={{ flexShrink: 0, background: matchMyFreeTime ? "#D3D7DF" : "#101114", color: matchMyFreeTime ? "#08090B" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => setMatchMyFreeTime((q) => !q)} style={{ flexShrink: 0, background: matchMyFreeTime ? "#C4B5FD" : "#120F1E", color: matchMyFreeTime ? "#0A0812" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               <CalendarClock size={11} style={{ marginRight: 4, verticalAlign: -2 }} />my free time
             </button>
-            <button onClick={() => setPrefs((p) => ({ ...p, vibe: p.vibe === "quiet" ? null : "quiet" }))} style={{ flexShrink: 0, background: prefs.vibe === "quiet" ? "#E6E8EC" : "#101114", color: prefs.vibe === "quiet" ? "#060607" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => setPrefs((p) => ({ ...p, vibe: p.vibe === "quiet" ? null : "quiet" }))} style={{ flexShrink: 0, background: prefs.vibe === "quiet" ? "#E9E3FF" : "#120F1E", color: prefs.vibe === "quiet" ? "#07060C" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
               <Snowflake size={11} style={{ marginRight: 4, verticalAlign: -2 }} />quiet
             </button>
             {[["plug", "charging"], ["wifi+", "wi-fi"]].map(([tag, label]) => (
-              <button key={tag} onClick={() => toggleRequirement(tag)} style={{ flexShrink: 0, background: prefs.requirements.includes(tag) ? "#E6E8EC" : "#101114", color: prefs.requirements.includes(tag) ? "#060607" : "#F4F5F7", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <button key={tag} onClick={() => toggleRequirement(tag)} style={{ flexShrink: 0, background: prefs.requirements.includes(tag) ? "#E9E3FF" : "#120F1E", color: prefs.requirements.includes(tag) ? "#07060C" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                 {label}
               </button>
             ))}
-            <button onClick={() => setShowFilters(true)} style={{ flexShrink: 0, marginLeft: "auto", background: activeFilterCount > 0 ? "#D3D7DF" : "#16171B", color: activeFilterCount > 0 ? "#08090B" : "#C9CCD3", border: activeFilterCount > 0 ? "none" : "1px solid rgba(255,255,255,0.12)", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            <button onClick={() => setShowFilters(true)} style={{ flexShrink: 0, marginLeft: "auto", background: activeFilterCount > 0 ? "#C4B5FD" : "#1A1630", color: activeFilterCount > 0 ? "#0A0812" : "#CFC7EC", border: activeFilterCount > 0 ? "none" : "1px solid rgba(196,181,253,0.12)", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               <Sparkles size={13} />
               {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Sort & Filter"}
             </button>
@@ -1507,9 +1618,9 @@ export default function GhostSlot() {
           )}
 
           {bestMatch ? (
-            <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(211,215,223,0.35)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(167,139,250,0.35)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#E6E8EC", display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#E9E3FF", display: "flex", alignItems: "center", gap: 4 }}>
                   <Sparkles size={13} /> BEST MATCH
                 </div>
                 <Pill tone="lime">{bestMatch.score}% match</Pill>
@@ -1517,42 +1628,45 @@ export default function GhostSlot() {
               <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 19 }}>{bestMatch.room.name}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {getRecommendationExplanation(bestMatch.room, bestMatch.status, prefs).map((line, i) => (
-                  <div key={i} style={{ fontSize: 12.5, color: "#C9CCD3", display: "flex", gap: 6, alignItems: "flex-start" }}>
-                    <CheckCircle2 size={13} color="#E6E8EC" style={{ marginTop: 1, flexShrink: 0 }} /> {line}
+                  <div key={i} style={{ fontSize: 12.5, color: "#CFC7EC", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <CheckCircle2 size={13} color="#E9E3FF" style={{ marginTop: 1, flexShrink: 0 }} /> {line}
                   </div>
                 ))}
               </div>
               {bestMatch.room.bookable !== false && bestMatch.status.free && !(booking && booking.roomId === bestMatch.room.id) && (
-                <button onClick={() => handleBook(bestMatch.room, bestMatch.status)} disabled={!!booking} style={{ background: booking ? "rgba(255,255,255,0.06)" : "#D3D7DF", color: booking ? "#6B6F79" : "#060607", border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, cursor: booking ? "not-allowed" : "pointer" }}>
+                <button onClick={() => handleBook(bestMatch.room, bestMatch.status)} disabled={!!booking} style={{ background: booking ? "rgba(196,181,253,0.06)" : "#C4B5FD", color: booking ? "#857DA8" : "#07060C", border: "none", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, cursor: booking ? "not-allowed" : "pointer" }}>
                   {booking ? "end current booking first" : "Lock it in"}
                 </button>
               )}
+              <button onClick={() => { setMapFocusId(bestMatch.room.id); setTab("map"); }} style={{ background: "rgba(139,92,246,0.12)", color: "#E9E3FF", border: "1px solid rgba(139,92,246,0.4)", borderRadius: 12, padding: "10px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <Navigation size={14} /> {you ? `Take me there · ${bestMatch.room.walk.replace(" walk", "")} from you` : "Show me the way"}
+              </button>
             </div>
           ) : (
-            <div style={{ background: "#101114", border: "1px solid rgba(255,107,107,0.3)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ background: "#120F1E", border: "1px solid rgba(255,107,107,0.3)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                 <AlertTriangle size={16} color="#FF8B8B" style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ fontSize: 12.5, color: "#C9CCD3" }}>No room matches everything you asked for right now. Closest options:</div>
+                <div style={{ fontSize: 12.5, color: "#CFC7EC" }}>No room matches everything you asked for right now. Closest options:</div>
               </div>
               {closestOptions.map(({ room, status, score }) => (
-                <div key={room.id} style={{ background: "#16171B", borderRadius: 12, padding: 10, fontSize: 12, color: "#C9CCD3" }}>
+                <div key={room.id} style={{ background: "#1A1630", borderRadius: 12, padding: 10, fontSize: 12, color: "#CFC7EC" }}>
                   <b>{room.name}</b> — {score}% match, {status.free ? `free for ${fmtMin(status.freeFor)}` : status.closed ? `closed until ${status.busyUntil}` : `busy until ${status.busyUntil}`}, {room.walk}
                 </div>
               ))}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {prefs.location !== "Anywhere" && (
-                  <button onClick={() => setPrefs((p) => ({ ...p, location: "Anywhere" }))} style={{ background: "#D3D7DF", color: "#060607", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Expand location</button>
+                  <button onClick={() => setPrefs((p) => ({ ...p, location: "Anywhere" }))} style={{ background: "#C4B5FD", color: "#07060C", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Expand location</button>
                 )}
                 {prefs.vibe && (
-                  <button onClick={() => setPrefs((p) => ({ ...p, vibe: null }))} style={{ background: "#D3D7DF", color: "#060607", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Remove vibe filter</button>
+                  <button onClick={() => setPrefs((p) => ({ ...p, vibe: null }))} style={{ background: "#C4B5FD", color: "#07060C", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Remove vibe filter</button>
                 )}
                 {prefs.duration > 30 && (
-                  <button onClick={() => setPrefs((p) => ({ ...p, duration: Math.max(30, p.duration - 30) }))} style={{ background: "#D3D7DF", color: "#060607", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                  <button onClick={() => setPrefs((p) => ({ ...p, duration: Math.max(30, p.duration - 30) }))} style={{ background: "#C4B5FD", color: "#07060C", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
                     <RefreshCw size={10} style={{ marginRight: 4, verticalAlign: -1 }} />Allow {Math.max(30, prefs.duration - 30)} min
                   </button>
                 )}
                 {matchMyFreeTime && (
-                  <button onClick={() => setMatchMyFreeTime(false)} style={{ background: "#D3D7DF", color: "#060607", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Ignore my free time</button>
+                  <button onClick={() => setMatchMyFreeTime(false)} style={{ background: "#C4B5FD", color: "#07060C", border: "none", borderRadius: 999, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Ignore my free time</button>
                 )}
               </div>
             </div>
@@ -1560,13 +1674,13 @@ export default function GhostSlot() {
 
           {alternatives.length > 0 && (
             <div>
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>OTHER GOOD OPTIONS</div>
+              <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>OTHER GOOD OPTIONS</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {alternatives.map(({ room, status, score }) => (
-                  <div key={room.id} style={{ background: "#101114", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div key={room.id} style={{ background: "#120F1E", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{room.name}</div>
-                      <div style={{ fontSize: 11, color: "#6B6F79" }}>{room.sensing === "wifi" ? statusMeta(room, status, prefs, null).label : status.free ? `free ${fmtMin(status.freeFor)}` : status.closed ? `closed till ${status.busyUntil}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
+                      <div style={{ fontSize: 11, color: "#857DA8" }}>{room.sensing === "wifi" ? statusMeta(room, status, prefs, null).label : status.free ? `free ${fmtMin(status.freeFor)}` : status.closed ? `closed till ${status.busyUntil}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
                     </div>
                     <Pill tone="lime">{score}%</Pill>
                   </div>
@@ -1577,7 +1691,7 @@ export default function GhostSlot() {
 
           {restOfList.length > 0 && (
             <div className="gs-room-grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
+              <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
               {restOfList.map(({ room, status, score }) => (
                 <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} />
               ))}
@@ -1587,27 +1701,39 @@ export default function GhostSlot() {
       )}
 
       {view === "map" && (
-        <div style={{ padding: "0 18px" }}>
+        <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <WhereAmI compact places={places} location={you} onSet={setYou} onClear={() => setYou(null)} />
           <CampusMap
             rooms={roomsWithStatus}
             booking={booking}
             csi={csiStatus}
             onBook={role === "facilities" ? undefined : handleBook}
             onShowInFind={isStudent ? (room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, category: room.category, sortBy: p.sortBy })); } : undefined}
+            you={you}
+            onSetYou={setYou}
+            places={places}
+            focusId={mapFocusId}
+            anchorsVersion={anchorsVersion}
           />
+          {role === "facilities" && (
+            <>
+              <GpsCalibration places={places} onChanged={() => setAnchorsVersion((v) => v + 1)} />
+              <DoorQrCodes rooms={ROOM_META} />
+            </>
+          )}
         </div>
       )}
 
       {view === "timetable" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setTtSubTab("mine")} style={{ flex: 1, background: ttSubTab === "mine" ? "#D3D7DF" : "#101114", color: ttSubTab === "mine" ? "#08090B" : "#8B8F99", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{role === "faculty" ? "My teaching" : "My timetable"}</button>
-            <button onClick={() => setTtSubTab("rooms")} style={{ flex: 1, background: ttSubTab === "rooms" ? "#D3D7DF" : "#101114", color: ttSubTab === "rooms" ? "#08090B" : "#8B8F99", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Room timetables</button>
+            <button onClick={() => setTtSubTab("mine")} style={{ flex: 1, background: ttSubTab === "mine" ? "#C4B5FD" : "#120F1E", color: ttSubTab === "mine" ? "#0A0812" : "#A39CC4", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{role === "faculty" ? "My teaching" : "My timetable"}</button>
+            <button onClick={() => setTtSubTab("rooms")} style={{ flex: 1, background: ttSubTab === "rooms" ? "#C4B5FD" : "#120F1E", color: ttSubTab === "rooms" ? "#0A0812" : "#A39CC4", border: "none", borderRadius: 12, padding: "9px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Room timetables</button>
           </div>
 
           {ttSubTab === "mine" && (
             <>
-              <div style={{ fontSize: 12.5, color: "#8B8F99" }}>{role === "faculty" ? "The classes you teach. GhostSlot warns you when an extra class would clash." : "Feed it your classes so it stops guessing when you're actually free."}</div>
+              <div style={{ fontSize: 12.5, color: "#A39CC4" }}>{role === "faculty" ? "The classes you teach. GhostSlot warns you when an extra class would clash." : "Feed it your classes so it stops guessing when you're actually free."}</div>
               <CsvImport
                 label={role === "faculty" ? "Bulk import your teaching timetable" : "Bulk import your timetable"}
                 hint="CSV columns: day, start, end, subject. Times as HH:MM, 24-hour."
@@ -1615,28 +1741,28 @@ export default function GhostSlot() {
                 onTemplate={() => downloadTemplate("mine")}
                 summary={myCsvSummary}
               />
-              <div style={{ textAlign: "center", fontSize: 10.5, color: "#4A4E57" }}>— or add one manually —</div>
+              <div style={{ textAlign: "center", fontSize: 10.5, color: "#4E4670" }}>— or add one manually —</div>
               <SlotForm day={day} onAdd={addMySlot} roomOptions={null} existingSlotsFor={() => mySlots} />
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{day.toUpperCase()}'S CLASSES</div>
+              <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>{day.toUpperCase()}'S CLASSES</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {mySlots.filter((s) => s.day === day).sort((a, b) => toMin(a.start) - toMin(b.start)).map((s) => (
-                  <div key={s.id} style={{ background: "#101114", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div><div style={{ fontSize: 13, fontWeight: 600 }}>{s.subject}</div><div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{s.start}–{s.end}</div></div>
-                    <button onClick={() => removeMySlot(s.id)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#6B6F79" /></button>
+                  <div key={s.id} style={{ background: "#120F1E", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div><div style={{ fontSize: 13, fontWeight: 600 }}>{s.subject}</div><div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>{s.start}–{s.end}</div></div>
+                    <button onClick={() => removeMySlot(s.id)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} color="#857DA8" /></button>
                   </div>
                 ))}
-                {mySlots.filter((s) => s.day === day).length === 0 && <div style={{ fontSize: 12.5, color: "#6B6F79" }}>No classes logged for {day}. Free bird.</div>}
+                {mySlots.filter((s) => s.day === day).length === 0 && <div style={{ fontSize: 12.5, color: "#857DA8" }}>No classes logged for {day}. Free bird.</div>}
               </div>
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>YOUR FREE WINDOWS</div>
+              <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>YOUR FREE WINDOWS</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {myFreeWindows.length ? myFreeWindows.map(([s, e], i) => <Pill key={i} tone="lime">{toHHMM(s)}–{toHHMM(e)}</Pill>) : <span style={{ fontSize: 12.5, color: "#6B6F79" }}>Booked solid. Rough day.</span>}
+                {myFreeWindows.length ? myFreeWindows.map(([s, e], i) => <Pill key={i} tone="lime">{toHHMM(s)}–{toHHMM(e)}</Pill>) : <span style={{ fontSize: 12.5, color: "#857DA8" }}>Booked solid. Rough day.</span>}
               </div>
             </>
           )}
 
           {ttSubTab === "rooms" && (
             <>
-              <div style={{ fontSize: 12.5, color: "#8B8F99" }}>Log what a room's booked for and GhostSlot figures out the rest.</div>
+              <div style={{ fontSize: 12.5, color: "#A39CC4" }}>Log what a room's booked for and GhostSlot figures out the rest.</div>
               <CsvImport
                 label="Bulk import room timetables"
                 hint="CSV columns: room, day, start, end, subject. Room = exact room ID or name, e.g. A2-104."
@@ -1644,19 +1770,19 @@ export default function GhostSlot() {
                 onTemplate={() => downloadTemplate("rooms")}
                 summary={roomCsvSummary}
               />
-              <div style={{ textAlign: "center", fontSize: 10.5, color: "#4A4E57" }}>— or add one manually —</div>
+              <div style={{ textAlign: "center", fontSize: 10.5, color: "#4E4670" }}>— or add one manually —</div>
               <SlotForm day={day} onAdd={addRoomSlot} roomOptions={TIMETABLE_ROOMS} existingSlotsFor={(roomId) => roomSlots[roomId] || []} />
               {TIMETABLE_ROOMS.map((r) => (
                 <div key={r.id}>
-                  <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace", marginTop: 6, marginBottom: 4 }}>{r.name.toUpperCase()} · {day.toUpperCase()}</div>
+                  <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", marginTop: 6, marginBottom: 4 }}>{r.name.toUpperCase()} · {day.toUpperCase()}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {(roomSlots[r.id] || []).filter((s) => s.day === day).sort((a, b) => toMin(a.start) - toMin(b.start)).map((s) => (
-                      <div key={s.id} style={{ background: "#101114", borderRadius: 12, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div><div style={{ fontSize: 12.5, fontWeight: 600 }}>{s.subject}</div><div style={{ fontSize: 11, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{s.start}–{s.end}</div></div>
-                        <button onClick={() => removeRoomSlot(r.id, s.id)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#6B6F79" /></button>
+                      <div key={s.id} style={{ background: "#120F1E", borderRadius: 12, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div><div style={{ fontSize: 12.5, fontWeight: 600 }}>{s.subject}</div><div style={{ fontSize: 11, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>{s.start}–{s.end}</div></div>
+                        <button onClick={() => removeRoomSlot(r.id, s.id)} style={{ background: "none", border: "none", cursor: "pointer" }}><Trash2 size={13} color="#857DA8" /></button>
                       </div>
                     ))}
-                    {(roomSlots[r.id] || []).filter((s) => s.day === day).length === 0 && <div style={{ fontSize: 12, color: "#4A4E57" }}>nothing booked — open all {day}</div>}
+                    {(roomSlots[r.id] || []).filter((s) => s.day === day).length === 0 && <div style={{ fontSize: 12, color: "#4E4670" }}>nothing booked — open all {day}</div>}
                   </div>
                 </div>
               ))}
@@ -1669,49 +1795,49 @@ export default function GhostSlot() {
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>AI-assisted shortage forecast</div>
-            <div style={{ fontSize: 12, color: "#8B8F99", marginTop: 2 }}>Forecast combines timetable occupancy, historical utilization and current demand signals.</div>
+            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>Forecast combines timetable occupancy, historical utilization and current demand signals.</div>
           </div>
-          <div style={{ background: "#101114", borderRadius: 16, padding: 12, height: 190 }}>
+          <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 190 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={forecastData} margin={{ top: 5, right: 8, left: -22, bottom: 0 }}>
-                <defs><linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#D3D7DF" stopOpacity={0.6} /><stop offset="100%" stopColor="#D3D7DF" stopOpacity={0.02} /></linearGradient></defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="hour" tick={{ fill: "#6B6F79", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#6B6F79", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
-                <Tooltip contentStyle={{ background: "#060607", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 12 }} />
-                <Area type="monotone" dataKey="risk" stroke="#D3D7DF" strokeWidth={2} fill="url(#riskFill)" />
+                <defs><linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4B5FD" stopOpacity={0.6} /><stop offset="100%" stopColor="#C4B5FD" stopOpacity={0.02} /></linearGradient></defs>
+                <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
+                <XAxis dataKey="hour" tick={{ fill: "#857DA8", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#857DA8", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+                <Tooltip contentStyle={{ background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 }} />
+                <Area type="monotone" dataKey="risk" stroke="#C4B5FD" strokeWidth={2} fill="url(#riskFill)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div style={{ background: "#101114", border: "1px solid rgba(255,107,107,0.25)", borderRadius: 14, padding: 12, fontSize: 12.5, color: "#C9CCD3", display: "flex", gap: 8 }}>
+          <div style={{ background: "#120F1E", border: "1px solid rgba(255,107,107,0.25)", borderRadius: 14, padding: 12, fontSize: 12.5, color: "#CFC7EC", display: "flex", gap: 8 }}>
             <Sparkles size={16} color="#FF8B8B" style={{ flexShrink: 0 }} />
             <span><b style={{ color: "#FF8B8B" }}>{peakSlot.hour} is about to be a bloodbath</b> — {peakSlot.risk}% shortage risk. Book your spot before then or accept your fate on the canteen steps.</span>
           </div>
 
-          <div style={{ background: "#101114", borderRadius: 16, padding: 14, border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#E6E8EC", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>CAMPUS CAPACITY</div>
+          <div style={{ background: "#120F1E", borderRadius: 16, padding: 14, border: "1px solid rgba(196,181,253,0.07)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#E9E3FF", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>CAMPUS CAPACITY</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{TIMETABLE_ROOMS.length}</div><div style={{ fontSize: 10.5, color: "#8B8F99" }}>rooms tracked</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{avgUtil}%</div><div style={{ fontSize: 10.5, color: "#8B8F99" }}>avg utilization</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{underusedCount}</div><div style={{ fontSize: 10.5, color: "#8B8F99" }}>underused rooms</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{peakSlot.hour}</div><div style={{ fontSize: 10.5, color: "#8B8F99" }}>peak shortage</div></div>
+              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{TIMETABLE_ROOMS.length}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>rooms tracked</div></div>
+              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{avgUtil}%</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>avg utilization</div></div>
+              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{underusedCount}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>underused rooms</div></div>
+              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{peakSlot.hour}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>peak shortage</div></div>
             </div>
-            <div style={{ fontSize: 12, color: "#C9CCD3", marginTop: 10, lineHeight: 1.4 }}>
-              <Percent size={11} style={{ marginRight: 4, verticalAlign: -1 }} color="#E6E8EC" />
-              <b style={{ color: "#E6E8EC" }}>{100 - avgUtil}%</b> of tracked room-capacity sits unused in an average week. Use what's already built before asking for more.
+            <div style={{ fontSize: 12, color: "#CFC7EC", marginTop: 10, lineHeight: 1.4 }}>
+              <Percent size={11} style={{ marginRight: 4, verticalAlign: -1 }} color="#E9E3FF" />
+              <b style={{ color: "#E9E3FF" }}>{100 - avgUtil}%</b> of tracked room-capacity sits unused in an average week. Use what's already built before asking for more.
             </div>
           </div>
 
           <div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Most ghosted rooms</div>
-            <div style={{ fontSize: 12, color: "#8B8F99", marginTop: 2, marginBottom: 8 }}>These spaces have capacity that's frequently left unused.</div>
-            <div style={{ background: "#101114", borderRadius: 16, padding: 12, height: 160 }}>
+            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2, marginBottom: 8 }}>These spaces have capacity that's frequently left unused.</div>
+            <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 160 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={underused} layout="vertical" margin={{ left: 6, right: 16 }}>
                   <XAxis type="number" hide domain={[0, 100]} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: "#C9CCD3", fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
-                  <Tooltip contentStyle={{ background: "#060607", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="util" radius={[0, 6, 6, 0]} barSize={16}>{underused.map((_, i) => <Cell key={i} fill="#E6E8EC" />)}</Bar>
+                  <YAxis type="category" dataKey="name" tick={{ fill: "#CFC7EC", fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
+                  <Tooltip contentStyle={{ background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 }} />
+                  <Bar dataKey="util" radius={[0, 6, 6, 0]} barSize={16}>{underused.map((_, i) => <Cell key={i} fill="#E9E3FF" />)}</Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1731,14 +1857,14 @@ export default function GhostSlot() {
 
       {view === "squad" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 12.5, color: "#8B8F99" }}>People in your batch who are also free right now, allegedly.</div>
+          <div style={{ fontSize: 12.5, color: "#A39CC4" }}>People in your batch who are also free right now, allegedly.</div>
           {SQUAD.map((s) => (
-            <div key={s.name} style={{ background: "#101114", borderRadius: 16, padding: 13, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div key={s.name} style={{ background: "#120F1E", borderRadius: 16, padding: 13, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(196,181,253,0.07)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: "#1E2026", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: "#C9CDD6" }}>{s.init}</div>
-                <div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.name}</div><div style={{ fontSize: 11.5, color: "#6B6F79" }}>{s.free} · {s.slot}</div></div>
+                <div style={{ width: 38, height: 38, borderRadius: 12, background: "#221C3B", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: "#D2C8F5" }}>{s.init}</div>
+                <div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.name}</div><div style={{ fontSize: 11.5, color: "#857DA8" }}>{s.free} · {s.slot}</div></div>
               </div>
-              <button onClick={() => ping(s.name)} disabled={pinged[s.name]} style={{ background: pinged[s.name] ? "rgba(211,215,223,0.15)" : "#D3D7DF", color: pinged[s.name] ? "#E6E8EC" : "#060607", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: pinged[s.name] ? "default" : "pointer" }}>
+              <button onClick={() => ping(s.name)} disabled={pinged[s.name]} style={{ background: pinged[s.name] ? "rgba(167,139,250,0.15)" : "#C4B5FD", color: pinged[s.name] ? "#E9E3FF" : "#07060C", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: pinged[s.name] ? "default" : "pointer" }}>
                 {pinged[s.name] ? "pinged ✓" : "ping"}
               </button>
             </div>
@@ -1751,42 +1877,42 @@ export default function GhostSlot() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 17 }}>{currentUser.name}</div>
-              <div style={{ fontSize: 11.5, color: "#6B6F79", fontFamily: "'JetBrains Mono', monospace" }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}{currentUser.department ? ` · ${currentUser.department}` : ""}</div>
-              <div style={{ fontSize: 11.5, color: "#8B8F99", marginTop: 3 }}>{ROLE_META[currentUser.role]?.can}</div>
+              <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}{currentUser.department ? ` · ${currentUser.department}` : ""}</div>
+              <div style={{ fontSize: 11.5, color: "#A39CC4", marginTop: 3 }}>{ROLE_META[currentUser.role]?.can}</div>
             </div>
-            <button onClick={() => handleLogout()} style={{ background: "#101114", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 5, color: "#FF8B8B", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            <button onClick={() => handleLogout()} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, padding: "8px 10px", display: "flex", alignItems: "center", gap: 5, color: "#FF8B8B", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               <LogOut size={13} /> logout
             </button>
           </div>
           {role === "faculty" && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {[[currentUser.department || "—", "department"], [mySlots.length, "classes a week on your timetable"], [extraBooked, "extra classes booked this session"]].map(([v, l]) => (
-                <div key={l} style={{ flex: "1 1 120px", background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div key={l} style={{ flex: "1 1 120px", background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
                   <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{v}</div>
-                  <div style={{ fontSize: 11, color: "#8B8F99" }}>{l}</div>
+                  <div style={{ fontSize: 11, color: "#A39CC4" }}>{l}</div>
                 </div>
               ))}
             </div>
           )}
           {role === "facilities" && <StaffWorkLog department={currentUser.department} />}
           {!isStudent ? null : currentUser.isMinor ? (
-            <div style={{ background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)", fontSize: 12, color: "#8B8F99", lineHeight: 1.5 }}>
+            <div style={{ background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)", fontSize: 12, color: "#A39CC4", lineHeight: 1.5 }}>
               Room karma, badges and booking-behaviour stats are switched off for under-18 accounts. India's DPDP Act doesn't allow behavioural tracking of children. Everything else works the same.
             </div>
           ) : (<>
-          <div style={{ background: "linear-gradient(180deg, #1A1B20, #0E0F12)", borderRadius: 18, padding: 18, border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ fontSize: 11.5, color: "#8B8F99", fontFamily: "'JetBrains Mono', monospace" }}>ROOM KARMA</div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: "#E6E8EC" }}>{karma}</div>
-            <div style={{ fontSize: 12, color: "#8B8F99", marginTop: 2 }}>Top 12% of students who actually leave on time.</div>
+          <div style={{ background: "linear-gradient(180deg, #1E1936, #100D1B)", borderRadius: 18, padding: 18, border: "1px solid rgba(196,181,253,0.07)" }}>
+            <div style={{ fontSize: 11.5, color: "#A39CC4", fontFamily: "'JetBrains Mono', monospace" }}>ROOM KARMA</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: "#E9E3FF" }}>{karma}</div>
+            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>Top 12% of students who actually leave on time.</div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1, background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
               <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{mySlots.length}</div>
-              <div style={{ fontSize: 11, color: "#8B8F99" }}>classes logged</div>
+              <div style={{ fontSize: 11, color: "#A39CC4" }}>classes logged</div>
             </div>
-            <div style={{ flex: 1, background: "#101114", borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
               <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>1</div>
-              <div style={{ fontSize: 11, color: "#8B8F99" }}>ghosted booking (we see you)</div>
+              <div style={{ fontSize: 11, color: "#A39CC4" }}>ghosted booking (we see you)</div>
             </div>
           </div>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>Badges</div>
@@ -1798,37 +1924,37 @@ export default function GhostSlot() {
           </>)}
 
           {/* Security & privacy — what we hold about you, and the controls */}
-          <div style={{ background: "linear-gradient(180deg, #17181D, #0E0F12)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 1px 0 rgba(255,255,255,.04) inset" }}>
+          <div style={{ background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(196,181,253,0.09)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 1px 0 rgba(196,181,253,.04) inset" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 12, background: "linear-gradient(180deg, #ECEEF2, #B9BEC9)", display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck size={18} color="#08090B" /></div>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck size={18} color="#0A0812" /></div>
               <div>
                 <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>Security &amp; privacy</div>
-                <div style={{ fontSize: 11.5, color: "#8B8F99" }}>What GhostSlot holds about you, and your controls.</div>
+                <div style={{ fontSize: 11.5, color: "#A39CC4" }}>What GhostSlot holds about you, and your controls.</div>
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div style={{ background: "rgba(61,220,151,0.08)", border: "1px solid rgba(61,220,151,0.22)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#3DDC97", display: "flex", alignItems: "center", gap: 5 }}><CheckCircle2 size={13} /> {currentUser.isMinor ? "Guardian approved" : "18+ verified"}</div>
-                {currentUser.isMinor && currentUser.guardian && <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>by {currentUser.guardian.relation.toLowerCase()} {currentUser.guardian.name}{currentUser.guardian.consentAt ? ` · ${new Date(currentUser.guardian.consentAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. They can withdraw it from their link.</div>}
-                {!currentUser.isMinor && <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. Birth date not stored.</div>}
+                {currentUser.isMinor && currentUser.guardian && <div style={{ fontSize: 11, color: "#A39CC4", marginTop: 3 }}>by {currentUser.guardian.relation.toLowerCase()} {currentUser.guardian.name}{currentUser.guardian.consentAt ? ` · ${new Date(currentUser.guardian.consentAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. They can withdraw it from their link.</div>}
+                {!currentUser.isMinor && <div style={{ fontSize: 11, color: "#A39CC4", marginTop: 3 }}>at signup{currentUser.ageCheckedAt ? ` · ${new Date(currentUser.ageCheckedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}` : ""}. Birth date not stored.</div>}
               </div>
-              <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}><MonitorSmartphone size={13} /> {currentUser.activeSessions || 1} active session{(currentUser.activeSessions || 1) === 1 ? "" : "s"}</div>
-                <div style={{ fontSize: 11, color: "#8B8F99", marginTop: 3 }}>Secure httpOnly cookie, ends after 7 days.</div>
+                <div style={{ fontSize: 11, color: "#A39CC4", marginTop: 3 }}>Secure httpOnly cookie, ends after 7 days.</div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!currentUser.isDemo && <button onClick={() => handleLogout(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><LogOut size={13} /> Sign out everywhere</button>}
-              <button onClick={() => setShowPrivacy(true)} style={{ background: "#16171B", border: "1px solid #2E3138", color: "#F4F5F7", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Info size={13} /> Privacy notice</button>
+              {!currentUser.isDemo && <button onClick={() => handleLogout(true)} style={{ background: "#1A1630", border: "1px solid #322A50", color: "#F4F1FF", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><LogOut size={13} /> Sign out everywhere</button>}
+              <button onClick={() => setShowPrivacy(true)} style={{ background: "#1A1630", border: "1px solid #322A50", color: "#F4F1FF", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Info size={13} /> Privacy notice</button>
               {!currentUser.isDemo && <button onClick={() => { setDeleteOpen((o) => !o); setDeleteErr(""); }} style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", color: "#FF8B8B", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}><Trash2 size={13} /> Delete my account</button>}
             </div>
-            {currentUser.isDemo && <div style={{ fontSize: 11.5, color: "#8B8F99" }}>This is a shared judges' demo account, so <i>Sign out everywhere</i> and <i>Delete my account</i> are switched off. Sign up to try them.</div>}
+            {currentUser.isDemo && <div style={{ fontSize: 11.5, color: "#A39CC4" }}>This is a shared judges' demo account, so <i>Sign out everywhere</i> and <i>Delete my account</i> are switched off. Sign up to try them.</div>}
             {deleteOpen && !currentUser.isDemo && (
               <div style={{ background: "rgba(255,107,107,0.06)", border: "1px solid rgba(255,107,107,0.2)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 12.5, color: "#C9CCD3" }}>This permanently deletes your account and signs you out on every device. Enter your password to confirm.</div>
-                <input type="password" autoComplete="current-password" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} placeholder="password" maxLength={128} style={{ background: "#0A0B0D", border: "1px solid #2E3138", borderRadius: 10, padding: "9px 10px", color: "#F4F5F7", fontSize: 13, outline: "none" }} />
+                <div style={{ fontSize: 12.5, color: "#CFC7EC" }}>This permanently deletes your account and signs you out on every device. Enter your password to confirm.</div>
+                <input type="password" autoComplete="current-password" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} placeholder="password" maxLength={128} style={{ background: "#0B0914", border: "1px solid #322A50", borderRadius: 10, padding: "9px 10px", color: "#F4F1FF", fontSize: 13, outline: "none" }} />
                 {deleteErr && <div role="alert" style={{ fontSize: 12, color: "#FF8B8B" }}>{deleteErr}</div>}
-                <button onClick={deleteAccount} disabled={!deletePw} style={{ background: "#FF6B6B", color: "#08090B", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: deletePw ? "pointer" : "not-allowed", opacity: deletePw ? 1 : 0.5 }}>Delete permanently</button>
+                <button onClick={deleteAccount} disabled={!deletePw} style={{ background: "#FF6B6B", color: "#0A0812", border: "none", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, cursor: deletePw ? "pointer" : "not-allowed", opacity: deletePw ? 1 : 0.5 }}>Delete permanently</button>
               </div>
             )}
           </div>
@@ -1836,12 +1962,13 @@ export default function GhostSlot() {
       )}
 
       </div>{/* end gs-tab-wrap */}
+      </ErrorBoundary>
 
       {toast && (
-        <div style={{ position: "fixed", bottom: 92, left: "50%", transform: "translateX(-50%)", maxWidth: 400, width: "calc(100% - 36px)", background: "#16171B", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "10px 14px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 8, zIndex: 20, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
-          <Sparkles size={13} color="#E6E8EC" style={{ flexShrink: 0 }} />
+        <div style={{ position: "fixed", bottom: 92, left: "50%", transform: "translateX(-50%)", maxWidth: 400, width: "calc(100% - 36px)", background: "#1A1630", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 14, padding: "10px 14px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 8, zIndex: 20, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+          <Sparkles size={13} color="#E9E3FF" style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{toast}</span>
-          <button onClick={() => setToast(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#6B6F79" /></button>
+          <button onClick={() => setToast(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={13} color="#857DA8" /></button>
         </div>
       )}
 
@@ -1850,12 +1977,12 @@ export default function GhostSlot() {
       {role !== "facilities" && <CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} />}
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
 
-      <nav className="gs-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "#0E0F12", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", padding: "10px 4px 14px", zIndex: 10 }}>
+      <nav className="gs-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "#100D1B", borderTop: "1px solid rgba(196,181,253,0.07)", display: "flex", padding: "10px 4px 14px", zIndex: 10 }}>
         {navItems.map((n) => {
           const Icon = n.icon;
           const active = view === n.id;
           return (
-            <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: active ? "#E6E8EC" : "#6B6F79" }}>
+            <button key={n.id} onClick={() => setTab(n.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: active ? "#E9E3FF" : "#857DA8" }}>
               <Icon size={18} />
               <span style={{ fontSize: 9.5, fontWeight: 600 }}>{n.label}</span>
             </button>
