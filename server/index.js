@@ -273,7 +273,21 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "not_found" }));
 const DIST = path.resolve(__dirname, "..", "dist");
 if (fs.existsSync(path.join(DIST, "index.html")) && process.env.SERVE_STATIC !== "off") {
   app.use("/assets", express.static(path.join(DIST, "assets"), { immutable: true, maxAge: "1y", index: false }));
-  app.use(express.static(DIST, { index: false, maxAge: "1h" }));
+  // Home-screen icons and the manifest are fetched by the phone's system
+  // (not by our page), so they must not carry the same-origin-only resource
+  // policy. Only these public brand files are relaxed; everything else keeps it.
+  const ICON_FILE = /^\/(brand\/[\w.-]+\.(png|ico)|apple-touch-icon(-precomposed)?\.png|favicon\.ico|manifest\.webmanifest)$/;
+  app.use((req, res, next) => {
+    if (ICON_FILE.test(req.path)) {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Cache-Control", "public, max-age=300");
+    }
+    next();
+  });
+  app.use(express.static(DIST, {
+    index: false, maxAge: "1h",
+    setHeaders: (res, file) => { if (/[\\/](brand[\\/][^\\/]+|apple-touch-icon[^\\/]*|favicon\.ico|manifest\.webmanifest)$/.test(file)) res.setHeader("Cache-Control", "public, max-age=300"); },
+  }));
   // A missing file (icon, image, script) gets a real 404, never the app's HTML,
   // so phones and browsers don't mistake a web page for an icon.
   app.get(/\.[a-z0-9]{2,5}$/i, (_req, res) => res.status(404).type("text/plain").send("Not found"));
