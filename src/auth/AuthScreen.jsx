@@ -257,6 +257,49 @@ function AgeBlocked({ until, onDone }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Public description of GhostSlot under the login box. It is the same text
+// as the loading screen in index.html, so search engines and people see the
+// same thing before and after the app starts.
+const ABOUT_STEPS = [
+  ["Say what you need", "Type it the way you'd say it, like \"quiet place near CSE for 90 minutes with charging\", or tap the filters."],
+  ["See the closest free match", "Free spaces are ranked by fit and by walking time from where you are. Set your spot by GPS, by picking a block, or by scanning the GhostSlot QR on a door."],
+  ["Lock it in", "Book the room in one tap. A timer runs at the top, and the room frees itself when your time is up."],
+];
+const ABOUT_ROLES = [
+  ["Students", "find a study room, library pod, café table or court, and book it"],
+  ["Faculty", "see their classes and find a free room for an extra lecture"],
+  ["Facilities staff", "spot rooms left powered on while empty, and print door QR codes"],
+];
+function AboutGhostSlot() {
+  const h2 = { fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 700, color: C.text, margin: "0 0 8px" };
+  const p = { fontSize: 13.5, color: C.sub, lineHeight: 1.6, margin: 0 };
+  return (
+    <section aria-labelledby="about-gs" style={{ maxWidth: 440, margin: "0 auto", padding: "8px 22px 48px", display: "flex", flexDirection: "column", gap: 22 }}>
+      <div>
+        <h2 id="about-gs" style={h2}>What is GhostSlot?</h2>
+        <p style={p}>GhostSlot is a free campus app that shows which classrooms, library pods, cafés and sports courts are free right now, and books one for you. It runs in any phone or laptop browser.</p>
+      </div>
+      <div>
+        <h2 style={h2}>How it works</h2>
+        <ol style={{ ...p, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+          {ABOUT_STEPS.map(([t, d]) => <li key={t}><b style={{ color: C.text }}>{t}.</b> {d}</li>)}
+        </ol>
+      </div>
+      <div>
+        <h2 style={h2}>Who it's for</h2>
+        <ul style={{ ...p, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+          {ABOUT_ROLES.map(([t, d]) => <li key={t}><b style={{ color: C.text }}>{t}</b> {d}.</li>)}
+        </ul>
+      </div>
+      <div>
+        <h2 style={h2}>Where the data comes from</h2>
+        <p style={p}>Classrooms and labs use the timetable plus live bookings. Libraries, cafés and courts use campus Wi-Fi crowd levels, which are simulated in this prototype until the campus feed is connected. One demo room is sensed live by two ESP32 boards reading Wi-Fi signals.</p>
+      </div>
+      <p style={{ ...p, fontSize: 12.5 }}>Made by Bhishu, Team COGNIX, at Chandigarh University.</p>
+    </section>
+  );
+}
+
 export default function AuthScreen({ onAuthed }) {
   const [mode, setMode] = useState("login");
   const [role, setRoleState] = useState("student");
@@ -350,8 +393,9 @@ export default function AuthScreen({ onAuthed }) {
       <div style={{ maxWidth: 440, margin: "0 auto", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "100vh", padding: "28px 22px" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 24 }}>
           <BrandMark size={64} glow />
-          <div style={{ marginTop: 12 }}><Wordmark size={28} /></div>
-          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6, textAlign: "center" }}>For CU students, faculty and facilities staff. Random uncles still need not apply.</div>
+          <h1 style={{ margin: "12px 0 0", fontSize: "inherit", fontWeight: "inherit" }}><Wordmark size={28} /></h1>
+          <p style={{ fontSize: 14, color: C.text, margin: "8px 0 0", textAlign: "center", fontWeight: 600 }}>Find a free room on campus in seconds.</p>
+          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, textAlign: "center" }}>For CU students, faculty and facilities staff. Random uncles still need not apply.</div>
         </div>
 
         <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 18, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 4 }}>
@@ -465,6 +509,7 @@ export default function AuthScreen({ onAuthed }) {
           <ShieldCheck size={12} /> Privacy notice · no trackers · no ads
         </button>
       </div>
+      <AboutGhostSlot />
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
     </div>
   );

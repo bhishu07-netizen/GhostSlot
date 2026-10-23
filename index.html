@@ -30,16 +30,39 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "GhostSlot",
-      "url": "https://ghostslot.onrender.com/",
-      "image": "https://ghostslot.onrender.com/brand/og-image.png",
-      "description": "Finds a truly free classroom, library pod, café table or sports court on campus, ranked by walking time, and books it in one tap.",
-      "applicationCategory": "EducationalApplication",
-      "operatingSystem": "Any (web browser)",
-      "browserRequirements": "Requires JavaScript",
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
-      "creator": { "@type": "Person", "name": "Bhishu" }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://ghostslot.onrender.com/#website",
+          "name": "GhostSlot",
+          "url": "https://ghostslot.onrender.com/",
+          "inLanguage": "en",
+          "publisher": { "@id": "https://ghostslot.onrender.com/#creator" }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://ghostslot.onrender.com/#app",
+          "name": "GhostSlot",
+          "url": "https://ghostslot.onrender.com/",
+          "image": "https://ghostslot.onrender.com/brand/og-image.png",
+          "description": "GhostSlot is a free campus app that shows which classrooms, library pods, cafés and sports courts are free right now, and books one for you. It runs in any phone or laptop browser.",
+          "applicationCategory": "EducationalApplication",
+          "operatingSystem": "Any (web browser)",
+          "browserRequirements": "Requires JavaScript",
+          "isAccessibleForFree": true,
+          "featureList": ["Find free classrooms, library pods, cafés and sports courts", "Rank free spaces by walking time from where you are", "Book a room in one tap", "Door QR codes to set your location"],
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+          "creator": { "@id": "https://ghostslot.onrender.com/#creator" },
+          "isPartOf": { "@id": "https://ghostslot.onrender.com/#website" }
+        },
+        {
+          "@type": "Person",
+          "@id": "https://ghostslot.onrender.com/#creator",
+          "name": "Bhishu",
+          "memberOf": { "@type": "Organization", "name": "Team COGNIX" },
+          "affiliation": { "@type": "CollegeOrUniversity", "name": "Chandigarh University" }
+        }
+      ]
     }
     </script>
     <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
@@ -65,7 +88,9 @@
       .gs-pre h1 { font-size: 34px; margin: 18px 0 6px; letter-spacing: -0.5px; }
       .gs-pre h1 span { color: #A78BFA; }
       .gs-pre .gs-lead { color: #CFC7EC; margin: 0 0 22px; }
-      .gs-pre ul { text-align: left; color: #A39CC4; font-size: 14px; line-height: 1.55; padding-left: 18px; }
+      .gs-pre section { text-align: left; color: #A39CC4; font-size: 14px; line-height: 1.6; margin-top: 28px; }
+      .gs-pre h2 { color: #F4F1FF; font-size: 17px; margin: 22px 0 8px; }
+      .gs-pre ul, .gs-pre ol { padding-left: 18px; }
       .gs-pre li { margin-bottom: 10px; }
       .gs-pre b { color: #E9E3FF; }
       .gs-pre .gs-load { color: #857DA8; font-size: 13px; margin-top: 22px; }
@@ -78,15 +103,28 @@
       <main class="gs-pre">
         <img src="/brand/logo-192.png" width="88" height="88" alt="GhostSlot logo" />
         <h1>Ghost<span>Slot</span></h1>
-        <p class="gs-lead">Find a truly free room on campus in seconds.</p>
-        <ul>
-          <li><b>Every kind of space:</b> classrooms, labs, library pods, cafés and sports courts, each shown as free, busy or closed.</li>
-          <li><b>Closest best match:</b> rooms ranked by real walking time from where you are, set by GPS, by picking a place, or by scanning the QR on a door.</li>
-          <li><b>Book in one tap:</b> lock a free room for your study time. It frees itself when your time is up.</li>
-          <li><b>Made for students, faculty and facilities staff</b>, with a campus digital twin that spots rooms left powered on while empty.</li>
-        </ul>
+        <p class="gs-lead">Find a free room on campus in seconds.</p>
         <p class="gs-load">Loading GhostSlot…</p>
         <noscript><p>GhostSlot needs JavaScript to run. Please turn it on and reload.</p></noscript>
+        <section>
+          <h2>What is GhostSlot?</h2>
+          <p>GhostSlot is a free campus app that shows which classrooms, library pods, cafés and sports courts are free right now, and books one for you. It runs in any phone or laptop browser.</p>
+          <h2>How it works</h2>
+          <ol>
+            <li><b>Say what you need.</b> Type it the way you'd say it, like "quiet place near CSE for 90 minutes with charging", or tap the filters.</li>
+            <li><b>See the closest free match.</b> Free spaces are ranked by fit and by walking time from where you are. Set your spot by GPS, by picking a block, or by scanning the GhostSlot QR on a door.</li>
+            <li><b>Lock it in.</b> Book the room in one tap. A timer runs at the top, and the room frees itself when your time is up.</li>
+          </ol>
+          <h2>Who it's for</h2>
+          <ul>
+            <li><b>Students</b> find a study room, library pod, café table or court, and book it.</li>
+            <li><b>Faculty</b> see their classes and find a free room for an extra lecture.</li>
+            <li><b>Facilities staff</b> spot rooms left powered on while empty, and print door QR codes.</li>
+          </ul>
+          <h2>Where the data comes from</h2>
+          <p>Classrooms and labs use the timetable plus live bookings. Libraries, cafés and courts use campus Wi-Fi crowd levels, which are simulated in this prototype until the campus feed is connected. One demo room is sensed live by two ESP32 boards reading Wi-Fi signals.</p>
+          <p>Made by Bhishu, Team COGNIX, at Chandigarh University.</p>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.jsx"></script>

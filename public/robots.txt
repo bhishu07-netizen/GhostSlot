@@ -1,4 +1,17 @@
 # GhostSlot
+# Search engines and AI answer engines (search and user-requested reads) are welcome.
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /guardian
+
 User-agent: *
 Allow: /
 Disallow: /api/
