@@ -367,7 +367,7 @@ export default function AuthScreen({ onAuthed }) {
             <Field icon={Contact2}><input aria-label={meta.idLabel} autoComplete="username" value={roll} onChange={(e) => setRoll(e.target.value)} placeholder={`${meta.idLabel} (e.g. ${meta.idExample})`} style={inputStyle} maxLength={15} /></Field>
             <Field icon={Lock}>
               <input autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && login()} type={showPass ? "text" : "password"} placeholder="password" style={{ ...inputStyle, paddingRight: 38 }} maxLength={128} />
-              <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 10, top: 11, background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
+              <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
             </Field>
             <ErrorBox>{error}</ErrorBox>
             <button onClick={login} disabled={busy} style={{ ...silverBtn, marginTop: 4, opacity: busy ? 0.7 : 1 }}>{busy ? <Loader2 size={15} className="gs-spin" /> : null} Log in</button>
@@ -440,7 +440,7 @@ export default function AuthScreen({ onAuthed }) {
                 )}
                 <Field icon={Lock}>
                   <input autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} type={showPass ? "text" : "password"} placeholder="create a password" style={{ ...inputStyle, paddingRight: 38 }} maxLength={128} />
-                  <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 10, top: 11, background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
+                  <button onClick={() => setShowPass((s) => !s)} aria-label={showPass ? "Hide password" : "Show password"} style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}>{showPass ? <EyeOff size={15} color={C.muted} /> : <Eye size={15} color={C.muted} />}</button>
                 </Field>
                 <Field icon={Lock}><input autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} type={showPass ? "text" : "password"} placeholder="confirm password" style={inputStyle} maxLength={128} /></Field>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>

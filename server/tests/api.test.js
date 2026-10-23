@@ -78,6 +78,7 @@ test("signup needs a valid, unused age token; DOB is never stored", async () => 
   const raw = fs.readFileSync(path.join(dataDir, "ghostslot-db.json"), "utf8");
   assert.ok(!raw.includes("2005-03-14") && !raw.includes("Str0ng-pass-99"));
   assert.equal((await c("/api/auth/me")).data.user.roll, "24BCS11111");
+  assert.equal((await c("/api/auth/session")).data.user.roll, "24BCS11111");
 });
 
 test("login: same answer for unknown user and wrong password; per-account lockout", async () => {
@@ -108,6 +109,9 @@ test("AI endpoints need a session; logout and delete-account work", async () => 
   assert.equal((await c("/api/auth/me")).data.user.isDemo, true);
   await c("/api/auth/logout", { method: "POST" });
   assert.equal((await c("/api/auth/me")).status, 401);
+  const signedOut = await c("/api/auth/session");
+  assert.equal(signedOut.status, 200);
+  assert.equal(signedOut.data.user, null);
 
   const d = client();
   const age = await d("/api/auth/age-check", { method: "POST", body: { dob: "2001-01-01" } });

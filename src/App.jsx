@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import Papa from "papaparse";
 import {
   MapPin, Clock, Users, TrendingUp, Bell, Plug, Volume1,
@@ -8,26 +8,31 @@ import {
   Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
   ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff,
 } from "lucide-react";
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Cell
-} from "recharts";
-import CampusAI from "./CampusAI";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
 import { ROLE_META, ROLE_NOTIFS } from "./auth/roles";
 import { BrandMark, Wordmark } from "./brand/BrandMark";
 import { api } from "./api";
-import CampusMap from "./CampusMap";
-import Twin from "./Twin";
-import FacultyHome from "./roles/FacultyHome";
-import OpsHome from "./roles/OpsHome";
 import { StaffWorkLog } from "./roles/StaffWorkLog";
 import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } from "./campus";
 import WhereAmI from "./WhereAmI";
-import { DoorQrCodes, GpsCalibration } from "./MapTools";
 import ErrorBoundary from "./ErrorBoundary";
 import { placeList, findPlace, walkMinutes, walkLabel, loadLocation, saveLocation } from "./location";
 import { loadState, saveState, cleanSlots, cleanRoomSlots } from "./persist";
+
+// Heavier screens load only when opened, so the first screen appears faster.
+const CampusAI = lazy(() => import("./CampusAI"));
+const CampusMap = lazy(() => import("./CampusMap"));
+const Twin = lazy(() => import("./Twin"));
+const FacultyHome = lazy(() => import("./roles/FacultyHome"));
+const OpsHome = lazy(() => import("./roles/OpsHome"));
+const ForecastChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.ForecastChart })));
+const UnderusedChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.UnderusedChart })));
+const DoorQrCodes = lazy(() => import("./MapTools").then((m) => ({ default: m.DoorQrCodes })));
+const GpsCalibration = lazy(() => import("./MapTools").then((m) => ({ default: m.GpsCalibration })));
+function ScreenLoading() {
+  return <div role="status" style={{ margin: "0 18px", padding: 18, borderRadius: 16, background: "#120F1E", border: "1px solid rgba(196,181,253,0.14)", color: "#A39CC4", fontSize: 13 }}>Loading…</div>;
+}
 
 // =========================================================================
 // CONSTANTS
@@ -929,7 +934,7 @@ export default function GhostSlot() {
 
   // Restore an existing session (httpOnly cookie) and check if AI is on.
   useEffect(() => {
-    api("/auth/me").then(({ user }) => setCurrentUser(user)).catch(() => setCurrentUser(null)).finally(() => setAuthChecked(true));
+    api("/auth/session").then(({ user }) => setCurrentUser(user || null)).catch(() => setCurrentUser(null)).finally(() => setAuthChecked(true));
     api("/ai/status").then((r) => setAiConfigured(!!r.configured)).catch(() => setAiConfigured(false));
   }, []);
 
@@ -1508,6 +1513,7 @@ export default function GhostSlot() {
       )}
 
       <ErrorBoundary resetKey={view}>
+      <Suspense fallback={<ScreenLoading />}>
       <div className="gs-tab-wrap">
       {view === "find" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1798,16 +1804,7 @@ export default function GhostSlot() {
             <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>Forecast combines timetable occupancy, historical utilization and current demand signals.</div>
           </div>
           <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 190 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={forecastData} margin={{ top: 5, right: 8, left: -22, bottom: 0 }}>
-                <defs><linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4B5FD" stopOpacity={0.6} /><stop offset="100%" stopColor="#C4B5FD" stopOpacity={0.02} /></linearGradient></defs>
-                <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
-                <XAxis dataKey="hour" tick={{ fill: "#857DA8", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#857DA8", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
-                <Tooltip contentStyle={{ background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 }} />
-                <Area type="monotone" dataKey="risk" stroke="#C4B5FD" strokeWidth={2} fill="url(#riskFill)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <ForecastChart data={forecastData} />
           </div>
           <div style={{ background: "#120F1E", border: "1px solid rgba(255,107,107,0.25)", borderRadius: 14, padding: 12, fontSize: 12.5, color: "#CFC7EC", display: "flex", gap: 8 }}>
             <Sparkles size={16} color="#FF8B8B" style={{ flexShrink: 0 }} />
@@ -1832,14 +1829,7 @@ export default function GhostSlot() {
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Most ghosted rooms</div>
             <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2, marginBottom: 8 }}>These spaces have capacity that's frequently left unused.</div>
             <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 160 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={underused} layout="vertical" margin={{ left: 6, right: 16 }}>
-                  <XAxis type="number" hide domain={[0, 100]} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: "#CFC7EC", fontSize: 11 }} axisLine={false} tickLine={false} width={110} />
-                  <Tooltip contentStyle={{ background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="util" radius={[0, 6, 6, 0]} barSize={16}>{underused.map((_, i) => <Cell key={i} fill="#E9E3FF" />)}</Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <UnderusedChart data={underused} />
             </div>
           </div>
         </div>
@@ -1962,6 +1952,7 @@ export default function GhostSlot() {
       )}
 
       </div>{/* end gs-tab-wrap */}
+      </Suspense>
       </ErrorBoundary>
 
       {toast && (
@@ -1974,7 +1965,7 @@ export default function GhostSlot() {
 
       </div>{/* end gs-main */}
 
-      {role !== "facilities" && <CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} />}
+      {role !== "facilities" && <Suspense fallback={null}><CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} /></Suspense>}
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
 
       <nav className="gs-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "#100D1B", borderTop: "1px solid rgba(196,181,253,0.07)", display: "flex", padding: "10px 4px 14px", zIndex: 10 }}>

@@ -10,6 +10,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
@@ -27,6 +28,8 @@ const { router: csiRouter } = await import("./csi.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+// Gzip text responses (the app bundle shrinks ~70%), so the first load is faster.
+app.use(compression());
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
 
@@ -265,6 +268,7 @@ app.post("/api/ai/chat", sameOriginOnly, requireAuth, aiLimiter, async (req, res
 });
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.use("/api", (_req, res, next) => { res.setHeader("X-Robots-Tag", "noindex"); next(); });
 app.use("/api", (_req, res) => res.status(404).json({ error: "not_found" }));
 
 // ---------------------------------------------------------------------------
@@ -291,7 +295,12 @@ if (fs.existsSync(path.join(DIST, "index.html")) && process.env.SERVE_STATIC !==
   // A missing file (icon, image, script) gets a real 404, never the app's HTML,
   // so phones and browsers don't mistake a web page for an icon.
   app.get(/\.[a-z0-9]{2,5}$/i, (_req, res) => res.status(404).type("text/plain").send("Not found"));
-  app.get("*", (_req, res) => res.sendFile(path.join(DIST, "index.html")));
+  app.get("*", (req, res) => {
+    // Only the home page is for search engines. The guardian consent page,
+    // door-QR links and any other app path stay out of search results.
+    if (req.path !== "/" || Object.keys(req.query).length) res.setHeader("X-Robots-Tag", "noindex, follow");
+    res.sendFile(path.join(DIST, "index.html"));
+  });
   console.log("[server] serving frontend from", DIST);
 }
 

@@ -1,0 +1,7 @@
+# GhostSlot
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /guardian
+
+Sitemap: https://ghostslot.onrender.com/sitemap.xml

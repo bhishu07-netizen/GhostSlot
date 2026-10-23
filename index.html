@@ -4,8 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07060C" />
-    <meta name="description" content="GhostSlot — AI-powered campus space intelligence. Find a truly free room in seconds." />
-    <title>GhostSlot</title>
+    <title>GhostSlot – Find a Free Room on Campus in Seconds</title>
+    <meta name="description" content="GhostSlot finds a truly free classroom, library pod, café table or sports court on campus, ranked by walking time from where you are. Book it in one tap. Built at Chandigarh University." />
+    <link rel="canonical" href="https://ghostslot.onrender.com/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="application-name" content="GhostSlot" />
+    <meta name="author" content="Bhishu (Team COGNIX)" />
+
+    <!-- Link previews (WhatsApp, Instagram, LinkedIn, X) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="GhostSlot" />
+    <meta property="og:url" content="https://ghostslot.onrender.com/" />
+    <meta property="og:title" content="GhostSlot – Find a Free Room on Campus in Seconds" />
+    <meta property="og:description" content="Free classrooms, library pods, café tables and courts, ranked by walking time from you. Book in one tap." />
+    <meta property="og:image" content="https://ghostslot.onrender.com/brand/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="GhostSlot logo: a ghost holding a calendar with a location pin" />
+    <meta property="og:locale" content="en_IN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="GhostSlot – Find a Free Room on Campus in Seconds" />
+    <meta name="twitter:description" content="Free classrooms, library pods, café tables and courts, ranked by walking time from you." />
+    <meta name="twitter:image" content="https://ghostslot.onrender.com/brand/og-image.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "GhostSlot",
+      "url": "https://ghostslot.onrender.com/",
+      "image": "https://ghostslot.onrender.com/brand/og-image.png",
+      "description": "Finds a truly free classroom, library pod, café table or sports court on campus, ranked by walking time, and books it in one tap.",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Any (web browser)",
+      "browserRequirements": "Requires JavaScript",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+      "creator": { "@type": "Person", "name": "Bhishu" }
+    }
+    </script>
     <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/gs-icon-180-v2.png" />
@@ -24,11 +60,35 @@
         color: #F4F1FF;
         -webkit-font-smoothing: antialiased;
       }
+      .gs-pre { max-width: 460px; margin: 0 auto; padding: 56px 22px 40px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; text-align: center; }
+      .gs-pre img { border-radius: 22px; box-shadow: 0 0 40px rgba(139,92,246,.45); }
+      .gs-pre h1 { font-size: 34px; margin: 18px 0 6px; letter-spacing: -0.5px; }
+      .gs-pre h1 span { color: #A78BFA; }
+      .gs-pre .gs-lead { color: #CFC7EC; margin: 0 0 22px; }
+      .gs-pre ul { text-align: left; color: #A39CC4; font-size: 14px; line-height: 1.55; padding-left: 18px; }
+      .gs-pre li { margin-bottom: 10px; }
+      .gs-pre b { color: #E9E3FF; }
+      .gs-pre .gs-load { color: #857DA8; font-size: 13px; margin-top: 22px; }
     </style>
   </head>
   <body>
-    <noscript>GhostSlot needs JavaScript to run.</noscript>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown while the app loads and readable by search engines and link
+           previews. React replaces it as soon as the app starts. -->
+      <main class="gs-pre">
+        <img src="/brand/logo-192.png" width="88" height="88" alt="GhostSlot logo" />
+        <h1>Ghost<span>Slot</span></h1>
+        <p class="gs-lead">Find a truly free room on campus in seconds.</p>
+        <ul>
+          <li><b>Every kind of space:</b> classrooms, labs, library pods, cafés and sports courts, each shown as free, busy or closed.</li>
+          <li><b>Closest best match:</b> rooms ranked by real walking time from where you are, set by GPS, by picking a place, or by scanning the QR on a door.</li>
+          <li><b>Book in one tap:</b> lock a free room for your study time. It frees itself when your time is up.</li>
+          <li><b>Made for students, faculty and facilities staff</b>, with a campus digital twin that spots rooms left powered on while empty.</li>
+        </ul>
+        <p class="gs-load">Loading GhostSlot…</p>
+        <noscript><p>GhostSlot needs JavaScript to run. Please turn it on and reload.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

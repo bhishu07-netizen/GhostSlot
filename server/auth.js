@@ -352,6 +352,22 @@ export function buildAuth(store) {
     } catch (err) { next(err); }
   });
 
+  // Same as /me, but "not signed in" is a normal answer (200, user: null)
+  // instead of an error, so the first page load logs no failed request.
+  router.get("/session", async (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      const token = req.cookies?.[SESSION_COOKIE];
+      if (!token || typeof token !== "string" || token.length > 100) return res.json({ user: null });
+      const session = await store.getSession(sha256(token));
+      if (!session) { res.clearCookie(SESSION_COOKIE, baseCookie); return res.json({ user: null }); }
+      const user = await store.findUserById(session.user_id);
+      if (!user) return res.json({ user: null });
+      const sessions = await store.countSessionsForUser(user.id);
+      res.json({ user: publicUser(user, { activeSessions: sessions }) });
+    } catch (err) { next(err); }
+  });
+
   router.get("/me", requireAuth, async (req, res, next) => {
     try {
       const sessions = await store.countSessionsForUser(req.user.id);
