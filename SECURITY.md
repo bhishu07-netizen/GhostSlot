@@ -1,8 +1,8 @@
-# GhostSlot security report (v0.2)
+# GhostSlot security report (v0.4)
 
 These are the checks run on this codebase, against the OWASP Top 10 (2021) and the OWASP
 ASVS / Cheat Sheet guidance for web apps. They cover what was wrong in v0.1, what changed,
-and how it's tested (`npm test`, 14 tests).
+and how it's tested (`npm test`, 24 tests).
 
 ## What was wrong in v0.1
 

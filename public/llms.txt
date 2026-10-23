@@ -1,0 +1,24 @@
+# GhostSlot
+
+> GhostSlot is a free web app that finds a truly free classroom, lab, library pod, café table or sports court at Chandigarh University (CU), ranked by walking time from you, and books it in one tap.
+
+## What it does
+- Shows every campus space as free, busy or closed, using timetables, bookings and occupancy estimates.
+- Ranks free rooms by real walking time, from GPS, a picked place, or the QR code on a room's door.
+- One-tap booking that releases the room automatically when your time is up.
+- Separate views for students, faculty and facilities staff.
+- A campus digital twin that spots rooms left powered on while empty and flags water anomalies.
+- CampusAI, an assistant that answers in English, Hindi and Punjabi using only the app's room data.
+
+## Who built it
+- Built by Bhishu (Team COGNIX), a BE CSE student at Chandigarh University.
+
+## Privacy
+- No trackers, analytics or session recording. Fonts are self-hosted.
+- Date of birth is checked once at signup and never stored. Under-18 students need a parent or guardian's consent.
+
+## Status
+- Working prototype with demo campus data. Wi-Fi CSI room sensing (ESP32) is a hardware prototype.
+
+## Links
+- App: https://ghostslot.onrender.com/

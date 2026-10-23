@@ -347,6 +347,19 @@ export default function AuthScreen({ onAuthed }) {
     } finally { setBusy(false); }
   }
 
+  // One-tap student demo for first-time visitors and judges.
+  async function tryDemo() {
+    const d = config?.demos?.student || config?.demo;
+    if (busy || !d) return;
+    setError(""); setBusy(true);
+    try {
+      const { user } = await api("/auth/login", { method: "POST", body: { role: "student", roll: d.roll, password: d.password } });
+      onAuthed(user, "login");
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(false); }
+  }
+
   function nextFromDetails() {
     setError("");
     if (!NAME_RE.test(name.trim())) { setError("You do have a name, right? Letters only, 2–60 characters."); return; }
@@ -396,6 +409,9 @@ export default function AuthScreen({ onAuthed }) {
           <h1 style={{ margin: "12px 0 0", fontSize: "inherit", fontWeight: "inherit" }}><Wordmark size={28} /></h1>
           <p style={{ fontSize: 14, color: C.text, margin: "8px 0 0", textAlign: "center", fontWeight: 600 }}>Find a free room on campus in seconds.</p>
           <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, textAlign: "center" }}>For CU students, faculty and facilities staff. Random uncles still need not apply.</div>
+          {config?.demo && (
+            <button type="button" onClick={tryDemo} disabled={busy} style={{ marginTop: 16, width: "100%", background: "transparent", color: C.text, border: "1px solid #A78BFA", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: "'Space Grotesk', sans-serif" }}>Try the demo, no signup</button>
+          )}
         </div>
 
         <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 18, background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 4 }}>

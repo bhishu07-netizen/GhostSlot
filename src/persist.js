@@ -13,6 +13,14 @@ export function loadState(userId) {
   } catch { return null; }
 }
 
+// Erasure: wipe this user's on-device copy (used when the account is deleted).
+export function clearState(userId) {
+  if (!userId) return;
+  try {
+    for (let v = 1; v <= VERSION; v++) localStorage.removeItem(`gs.state.v${v}.${userId}`);
+  } catch { /* storage blocked */ }
+}
+
 export function saveState(userId, state) {
   if (!userId) return;
   try { localStorage.setItem(key(userId), JSON.stringify(state)); } catch { /* storage full or private mode */ }

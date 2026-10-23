@@ -18,7 +18,7 @@ import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } fro
 import WhereAmI from "./WhereAmI";
 import ErrorBoundary from "./ErrorBoundary";
 import { placeList, findPlace, walkMinutes, walkLabel, loadLocation, saveLocation } from "./location";
-import { loadState, saveState, cleanSlots, cleanRoomSlots } from "./persist";
+import { loadState, saveState, clearState, cleanSlots, cleanRoomSlots } from "./persist";
 
 // Heavier screens load only when opened, so the first screen appears faster.
 const CampusAI = lazy(() => import("./CampusAI"));
@@ -1316,6 +1316,7 @@ export default function GhostSlot() {
     setDeleteErr("");
     try {
       await api("/auth/delete-account", { method: "POST", body: { password: deletePw } });
+      clearState(currentUser?.id);
       setDeletePw(""); setDeleteOpen(false); setCurrentUser(null); setBooking(null);
     } catch (e) { setDeleteErr(e.message); }
   }

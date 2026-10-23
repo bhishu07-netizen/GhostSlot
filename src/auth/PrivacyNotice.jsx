@@ -15,9 +15,9 @@ const SECTIONS = [
   ]],
   ["What we don't collect", [
     "Your date of birth. It's checked once on our server and thrown away.",
-    "Location, contacts, photos or ad IDs.",
+    "Contacts, photos or ad IDs. If you allow GPS, your position is used only on your device to sort rooms by walking time and is never sent to us.",
     "No trackers, analytics, session recording or third-party scripts. Fonts are served by GhostSlot itself, not Google.",
-    "Your timetable and bookings stay in this browser tab in the prototype. They aren't uploaded.",
+    "Your timetable and bookings are saved only in this browser on this device. They're never uploaded, and deleting your account wipes them from this device too.",
   ]],
   ["AI features", [
     "When you use CampusAI or AI search, your message and a snapshot of room availability are sent to Google's Gemini API to get an answer. GhostSlot doesn't store these messages.",
