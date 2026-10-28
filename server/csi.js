@@ -42,12 +42,12 @@ function keyMatches(given, expected) {
   const b = crypto.createHash("sha256").update(expected).digest();
   return crypto.timingSafeEqual(a, b);
 }
-function requireDeviceKey(req, res, next) {
+export function requireDeviceKey(req, res, next) {
   if (!process.env.CSI_DEVICE_KEY) return res.status(503).json({ error: "device_key_not_configured" });
   if (!keyMatches(req.get("x-device-key"), process.env.CSI_DEVICE_KEY)) return res.status(401).json({ error: "bad_device_key" });
   next();
 }
-function requireAdminKey(req, res, next) {
+export function requireAdminKey(req, res, next) {
   if (!process.env.CSI_ADMIN_KEY) return res.status(403).json({ error: "admin_endpoints_disabled" });
   if (!keyMatches(req.get("x-admin-key"), process.env.CSI_ADMIN_KEY)) return res.status(401).json({ error: "bad_admin_key" });
   next();
@@ -189,7 +189,7 @@ setInterval(() => {
   if (age > CONFIG.offlineTimeoutMs) {
     state.csiState = "OFFLINE";
   }
-}, Math.min(2000, CONFIG.offlineTimeoutMs));
+}, Math.min(2000, CONFIG.offlineTimeoutMs)).unref?.(); // timers never keep the process alive on their own
 
 // ---- Simulation ticker ------------------------------------------------
 // Only active while state.mode === "simulation". Feeds the exact same
@@ -217,6 +217,7 @@ function startSimulation() {
 
     ingestReading({ value, nodeId: "node-a", source: "simulation" });
   }, CONFIG.sampleRateMs);
+  simTimer.unref?.();
 }
 function stopSimulation() {
   if (simTimer) clearInterval(simTimer);

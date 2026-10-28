@@ -8,3 +8,5 @@ server/.env
 server/data/
 *.corrupt
 *.log
+__pycache__/
+*.pyc

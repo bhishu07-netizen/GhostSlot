@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
+import { MeshRadar, MeshDevRows, useMeshStatus } from "./MeshRadar.jsx";
 import Papa from "papaparse";
 import {
   MapPin, Clock, Users, TrendingUp, Bell, Plug, Volume1,
@@ -483,7 +484,7 @@ function DemoRoomCsiBadge({ csi, onOpenDevDashboard }) {
   );
 }
 
-function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, onOpenDevDashboard }) {
+function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard }) {
   const vm = vibeMeta[room.vibe];
   const VibeIcon = vm.icon;
   const meta = statusMeta(room, status, prefs, booking);
@@ -519,6 +520,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
         {room.tags.includes("wifi+") && <Pill><Wifi size={10} style={{ marginRight: 4, verticalAlign: -1 }} />wifi+</Pill>}
       </div>
 
+      {room.csiEnabled && <MeshRadar mesh={mesh} />}
       {room.csiEnabled && <DemoRoomCsiBadge csi={csi} onOpenDevDashboard={onOpenDevDashboard} />}
 
       {!room.bookable ? (
@@ -652,7 +654,7 @@ function GhostSlotInfo() {
 // =========================================================================
 // DEMO ROOM — CSI DEVELOPER DASHBOARD (debug view, separate from student UI)
 // =========================================================================
-function CsiDevDashboard({ csi, onClose }) {
+function CsiDevDashboard({ csi, mesh, onClose }) {
   const row = (label, value) => (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(196,181,253,0.06)", fontSize: 12.5 }}>
       <span style={{ color: "#A39CC4" }}>{label}</span>
@@ -689,6 +691,8 @@ function CsiDevDashboard({ csi, onClose }) {
               {row("Smoothing window", `${csi.config.smoothingWindow} samples`)}
               {row("Change threshold", `${csi.config.changeThreshold}σ`)}
               {row("Offline timeout", `${csi.config.offlineTimeoutMs} ms`)}
+              <div style={{ marginTop: 14, marginBottom: 4, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "#A39CC4", fontWeight: 700 }}>People-count mesh</div>
+              <MeshDevRows mesh={mesh} row={row} />
               <div style={{ marginTop: 10, fontSize: 11, color: "#857DA8", lineHeight: 1.5 }}>
                 CHANGE_DETECTED means the room's Wi-Fi channel deviated from its calibrated baseline beyond the threshold above — it is a signal-level detection, not a validated occupancy or people count.
               </div>
@@ -974,6 +978,8 @@ export default function GhostSlot() {
   // null and the UI shows "CSI status unavailable" rather than inventing a state.
   const [csiStatus, setCsiStatus] = useState(null);
   const [showCsiDevDashboard, setShowCsiDevDashboard] = useState(false);
+  // People count from the 4-board CSI mesh (server/csimesh.js). Same rule: never invented here.
+  const meshStatus = useMeshStatus();
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -1615,7 +1621,7 @@ export default function GhostSlot() {
           )}
 
           {showCsiDevDashboard && (
-            <CsiDevDashboard csi={csiStatus} onClose={() => setShowCsiDevDashboard(false)} />
+            <CsiDevDashboard csi={csiStatus} mesh={meshStatus} onClose={() => setShowCsiDevDashboard(false)} />
           )}
 
           {matchMyFreeTime && myAvailableNow < (prefs.duration || 30) && (
@@ -1700,7 +1706,7 @@ export default function GhostSlot() {
             <div className="gs-room-grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
               {restOfList.map(({ room, status, score }) => (
-                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} />
+                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} />
               ))}
             </div>
           )}

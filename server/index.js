@@ -2,6 +2,7 @@
 //   • Accounts, sessions and the signup age gate      (auth.js)
 //   • CampusAI chat + AI room-search parsing (Gemini) (this file)
 //   • Demo Room Wi-Fi CSI sensing                      (csi.js)
+//   • Demo Room people count from the CSI mesh        (csimesh.js)
 //   • In production, also serves the built frontend so the whole app runs
 //     on one origin with strict security headers.
 //
@@ -25,6 +26,7 @@ const { IS_PROD, cleanText } = await import("./security.js");
 const { createStore } = await import("./store.js");
 const { buildAuth, ensureDemoUser } = await import("./auth.js");
 const { router: csiRouter } = await import("./csi.js");
+const { meshRouter } = await import("./csimesh.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -107,6 +109,8 @@ app.use("/api/auth", sameOriginOnly, authRouter);
 const statusLimiter = rateLimit({ windowMs: 60 * 1000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 app.use("/api/csi", statusLimiter);
 app.use("/api", csiRouter);
+// Mesh CSI (people count from 4 boards + a trained model). Same key rules.
+app.use("/api", meshRouter);
 
 // Campus Twin (utilisation, energy waste, water anomalies). Signed-in users only.
 const { buildTwin } = await import("./twin.js");
