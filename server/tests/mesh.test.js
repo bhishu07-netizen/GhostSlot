@@ -9,6 +9,7 @@ import path from "node:path";
 
 process.env.CSI_DEVICE_KEY = "dev-key-xyz";
 process.env.CSI_ADMIN_KEY = "admin-key-xyz";
+process.env.SUPABASE_URL = ""; // tests never touch a real database
 
 const mesh = await import("../csimesh.js");
 const { validatePost, buildFeatures, validateModel, predictProba, createMeshEngine, buildMeshRouter,
@@ -168,4 +169,27 @@ test("routes: device key for posts, admin key for controls", async () => {
   } finally {
     server.close();
   }
+});
+
+test("recordings go to Supabase when configured and come back after a restart", async () => {
+  const table = [];
+  const fake = {
+    async insert(row) { table.push(structuredClone(row)); },
+    async loadAll(limit) { return table.slice(-limit); },
+    async clear() { table.length = 0; },
+  };
+  let t = 1_700_000_000_000;
+  const eng = createMeshEngine({ mode: "hardware", now: () => t, remote: fake, modelPath: null });
+  await eng.ready;
+  eng.startRecording("4");
+  for (let i = 0; i < 2; i++) { eng.ingest("mesh-2", [link("mesh-1", 40)]); eng.tick(); t += 2000; }
+  assert.equal(table.length, 2);
+  assert.equal(eng.status().recording.storage, "supabase");
+
+  const restarted = createMeshEngine({ mode: "hardware", now: () => t, remote: fake, modelPath: null });
+  await restarted.ready;
+  assert.equal(restarted.status().recording.rowsByLabel["4"], 2);
+  restarted.clear();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(table.length, 0);
 });

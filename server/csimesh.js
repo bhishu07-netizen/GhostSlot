@@ -161,11 +161,51 @@ export function toCsv(rows) {
 }
 
 // ---------------------------------------------------------------------------
+// Supabase storage for recordings (table gs_mesh_rows, migration 0007).
+// Render's free disk is wiped on every deploy, so this is where recordings
+// should live in production. Used automatically when SUPABASE_URL and
+// SUPABASE_SERVICE_ROLE_KEY are set.
+// ---------------------------------------------------------------------------
+export function supabaseRemote(url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!url || !key) return null;
+  let clientPromise = null;
+  const sb = () => (clientPromise ||= import("@supabase/supabase-js").then(({ createClient }) =>
+    createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })));
+  return {
+    async insert(row) {
+      const c = await sb();
+      const r = await c.from("gs_mesh_rows").insert({
+        t: new Date(row.t).toISOString(), session: row.session, label: row.label, source: row.source, features: row.features,
+      });
+      if (r.error) throw new Error(r.error.message);
+    },
+    async loadAll(limit) {
+      const c = await sb();
+      const out = [];
+      for (let from = 0; out.length < limit; from += 1000) {
+        const r = await c.from("gs_mesh_rows").select("t,session,label,source,features")
+          .order("id", { ascending: true }).range(from, from + 999);
+        if (r.error) throw new Error(r.error.message);
+        for (const x of r.data) out.push({ t: Date.parse(x.t), session: x.session, label: x.label, source: x.source, features: x.features });
+        if (r.data.length < 1000) break;
+      }
+      return out.slice(-limit);
+    },
+    async clear() {
+      const c = await sb();
+      const r = await c.from("gs_mesh_rows").delete().gte("id", 0);
+      if (r.error) throw new Error(r.error.message);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Engine (one per server; tests create their own with fake time)
 // ---------------------------------------------------------------------------
 export function createMeshEngine(opts = {}) {
   const now = opts.now || (() => Date.now());
-  const dataFile = opts.dataFile === undefined
+  const remote = opts.remote === undefined ? supabaseRemote() : opts.remote; // null = no Supabase
+  const dataFile = remote ? null : opts.dataFile === undefined
     ? path.join(process.env.DATA_DIR || path.join(__dirname, "data"), "mesh-recordings.jsonl")
     : opts.dataFile; // null = memory only
   const modelPath = opts.modelPath === undefined
@@ -213,7 +253,21 @@ export function createMeshEngine(opts = {}) {
       s.rows = s.rows.slice(-CONFIG.maxRows);
     } catch { /* a corrupt file just means starting fresh */ }
   }
+  // Rows already stored in Supabase come back on start (after a redeploy).
+  let remoteWarned = false;
+  const warnRemote = (e) => {
+    if (!remoteWarned) console.warn("[mesh] Supabase storage problem, keeping rows in memory:", e.message);
+    remoteWarned = true;
+  };
+  const remoteReady = remote
+    ? remote.loadAll(CONFIG.maxRows).then((stored) => {
+        const ok = stored.filter((r) => Array.isArray(r.features) && r.features.length === FEATURE_NAMES.length);
+        s.rows = [...ok, ...s.rows].slice(-CONFIG.maxRows);
+      }).catch(warnRemote)
+    : Promise.resolve();
+
   function persist(row) {
+    if (remote) { remote.insert(row).catch(warnRemote); return; }
     if (!dataFile) return;
     try {
       fs.mkdirSync(path.dirname(dataFile), { recursive: true });
@@ -296,6 +350,7 @@ export function createMeshEngine(opts = {}) {
   function stopRecording() { s.recording = null; return { ok: true }; }
   function clear() {
     s.rows = [];
+    if (remote) remote.clear().catch(warnRemote);
     if (dataFile) { try { fs.rmSync(dataFile, { force: true }); } catch { /* ignore */ } }
   }
   function setMode(mode) {
@@ -333,6 +388,7 @@ export function createMeshEngine(opts = {}) {
             trainRows: s.model.meta?.trainRows ?? null }
         : { loaded: false, reason: s.modelError },
       recording: {
+        storage: remote ? "supabase" : dataFile ? "file" : "memory",
         active: !!s.recording,
         label: s.recording?.label || null,
         rowsByLabel: counts,
@@ -343,7 +399,7 @@ export function createMeshEngine(opts = {}) {
     };
   }
 
-  return { ingest, tick, startRecording, stopRecording, clear, setMode, status, loadModel,
+  return { ingest, tick, startRecording, stopRecording, clear, setMode, status, loadModel, ready: remoteReady,
     exportCsv: () => toCsv(s.rows), get mode() { return s.mode; } };
 }
 
