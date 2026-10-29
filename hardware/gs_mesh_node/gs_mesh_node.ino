@@ -5,11 +5,14 @@
 //      ping carries the OFDM training fields that CSI is measured from).
 //   2. Listens to the other boards' pings and measures, PER LINK
 //      (e.g. "mesh-2 -> me"), over a 2-second window:
-//        motion  = how much the signal changes from ping to ping
-//                  (people moving between boards make this jump)
-//        profile = the average signal strength in 8 slices of the channel
+//        motion  = how much each subcarrier's (gain-normalised) strength
+//                  varies over the 2-second window (people make it jump)
+//        profile = the average SHAPE of the channel in 8 slices
 //                  (a person standing still still shadows the link, which
 //                  shows up as a change in this shape vs. the empty room)
+//   v2: every packet is divided by its own average strength first. The radio's
+//   automatic gain control changes overall strength on its own; without this,
+//   those gain jumps looked like "motion" even in an empty room.
 //        rssi    = average received signal strength
 //   Every 2 s it posts all its links to the server over the phone hotspot:
 //     POST /api/csi/mesh   X-Device-Key: <CSI_DEVICE_KEY>
@@ -62,13 +65,11 @@ struct Source {
   bool     used;
   uint8_t  mac[6];
   uint8_t  num;
-  float    prevAmp[SC_COUNT];
-  bool     havePrev;
-  double   motionSum;
-  uint32_t motionFrames;
   uint32_t frames;
   double   rssiSum;
   double   groupSum[GROUPS];
+  float    ampSum[SC_COUNT];    // per-subcarrier sum of normalised amplitude
+  float    ampSqSum[SC_COUNT];  // ... and sum of squares, for the window's variance
 };
 static Source src[MAX_SRC];
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -106,35 +107,32 @@ static void onCsi(void *, wifi_csi_info_t *info) {
   const int8_t *b = info->buf;
   int start = info->first_word_invalid ? 2 : 0;   // first 4 bytes may be junk
   float amp[SC_COUNT];
+  float total = 0; int used = 0;
   for (int k = 0; k < SC_COUNT; k++) {
     if (k < start) { amp[k] = 0; continue; }
     float im = b[2 * k], re = b[2 * k + 1];
     amp[k] = sqrtf(im * im + re * re);
+    if (usable(k)) { total += amp[k]; used++; }
   }
+  if (used == 0 || total / used < 1.0f) return;  // empty/garbage frame
+  // Gain normalisation: divide by this packet's own mean strength.
+  float inv = used / total;
+  for (int k = start; k < SC_COUNT; k++) amp[k] *= inv;
 
   portENTER_CRITICAL(&mux);
   for (int i = 0; i < MAX_SRC; i++) {
     Source &s = src[i];
     if (!s.used || memcmp(s.mac, info->mac, 6) != 0) continue;
 
-    if (s.havePrev) {
-      float diff = 0; int n = 0;
-      for (int k = start; k < SC_COUNT; k++) {
-        if (!usable(k)) continue;
-        diff += fabsf(amp[k] - s.prevAmp[k]);
-        n++;
-      }
-      if (n > 0) { s.motionSum += diff / n; s.motionFrames++; }
-    }
     float gSum[GROUPS] = {0}; int gN[GROUPS] = {0};
     for (int k = start; k < SC_COUNT; k++) {
       if (!usable(k)) continue;
       gSum[groupOf[k]] += amp[k];
       gN[groupOf[k]]++;
+      s.ampSum[k] += amp[k];
+      s.ampSqSum[k] += amp[k] * amp[k];
     }
     for (int g = 0; g < GROUPS; g++) s.groupSum[g] += gN[g] ? gSum[g] / gN[g] : 0;
-    memcpy(s.prevAmp, amp, sizeof(amp));
-    s.havePrev = true;
     s.frames++;
     s.rssiSum += info->rx_ctrl.rssi;
     break;
@@ -236,19 +234,34 @@ static int postJson(const String &body) {
 }
 
 static void report() {
-  // Snapshot and reset every source's window under the lock.
-  struct Snap { uint8_t num; uint32_t frames, motionFrames; double motionSum, rssiSum, groupSum[GROUPS]; };
+  // Snapshot and reset every source's window under the lock. The window's
+  // "motion" is computed here: for each subcarrier, how much its normalised
+  // strength varied over the window (standard deviation), averaged.
+  struct Snap { uint8_t num; uint32_t frames; double rssiSum, groupSum[GROUPS]; float motion; };
   Snap snaps[MAX_SRC]; int nSnap = 0;
   portENTER_CRITICAL(&mux);
   for (int i = 0; i < MAX_SRC; i++) {
     Source &s = src[i];
     if (!s.used) continue;
     Snap &x = snaps[nSnap++];
-    x.num = s.num; x.frames = s.frames; x.motionFrames = s.motionFrames;
-    x.motionSum = s.motionSum; x.rssiSum = s.rssiSum;
+    x.num = s.num; x.frames = s.frames; x.rssiSum = s.rssiSum;
     memcpy(x.groupSum, s.groupSum, sizeof(x.groupSum));
-    s.frames = 0; s.motionFrames = 0; s.motionSum = 0; s.rssiSum = 0;
+    x.motion = 0;
+    if (s.frames > 1) {
+      float sd = 0; int n = 0;
+      for (int k = 2; k < SC_COUNT; k++) {          // k < 2 can be invalid on some frames
+        if (!usable(k)) continue;
+        float mean = s.ampSum[k] / s.frames;
+        float var = s.ampSqSum[k] / s.frames - mean * mean;
+        sd += var > 0 ? sqrtf(var) : 0;
+        n++;
+      }
+      x.motion = n ? sd / n : 0;
+    }
+    s.frames = 0; s.rssiSum = 0;
     memset(s.groupSum, 0, sizeof(s.groupSum));
+    memset(s.ampSum, 0, sizeof(s.ampSum));
+    memset(s.ampSqSum, 0, sizeof(s.ampSqSum));
   }
   portEXIT_CRITICAL(&mux);
 
@@ -257,7 +270,7 @@ static void report() {
   JsonArray links = doc["links"].to<JsonArray>();
   for (int i = 0; i < nSnap; i++) {
     Snap &x = snaps[i];
-    if (x.frames < MIN_FRAMES || x.motionFrames == 0) {
+    if (x.frames < MIN_FRAMES) {
       Serial.printf("[csi] weak link from mesh-%d: %lu frames in 2 s\n", x.num, (unsigned long)x.frames);
       continue;
     }
@@ -265,10 +278,10 @@ static void report() {
     char from[12]; snprintf(from, sizeof(from), "mesh-%d", x.num);
     l["from"] = from;
     l["frames"] = x.frames;
-    l["motion"] = serialized(String(x.motionSum / x.motionFrames * 100.0, 2));
+    l["motion"] = serialized(String(x.motion * 1000.0f, 2));        // normalised units x1000
     l["rssi"] = serialized(String(x.rssiSum / x.frames, 1));
     JsonArray prof = l["profile"].to<JsonArray>();
-    for (int g = 0; g < GROUPS; g++) prof.add(serialized(String(x.groupSum[g] / x.frames, 2)));
+    for (int g = 0; g < GROUPS; g++) prof.add(serialized(String(x.groupSum[g] / x.frames * 100.0, 2)));  // shape, ~100
   }
 
   String body; serializeJson(doc, body);
@@ -291,7 +304,7 @@ void setup() {
   Serial.begin(115200);
   delay(1500);
   snprintf(NODE_ID, sizeof(NODE_ID), "mesh-%d", NODE_NUM);
-  Serial.printf("\n=== GhostSlot %s (mesh node) ===\n", NODE_ID);
+  Serial.printf("\n=== GhostSlot %s (mesh node, firmware v2) ===\n", NODE_ID);
 
   // Map the 52 usable subcarriers onto 8 slices of roughly equal size.
   int u = 0;
