@@ -115,11 +115,49 @@ saw. That number (and only that number) is what you can say on stage.
 It saves `server/models/mesh-count.json`. Commit it and push → Render
 redeploys → the radar shows live counts.
 
+## Part 6 (optional): zone mode, where ONE person is
+
+With exactly one person inside, a second model can tell **which part of the
+room** they're in. The diagonals split the room into 5 zones:
+
+```
+  [mesh-1] ─────────── [mesh-2]
+     │ ╲    FRONT    ╱ │
+     │   ╲         ╱   │
+     │LEFT  CENTRE  RIGHT
+     │   ╱         ╲   │
+     │ ╱    BACK     ╲ │
+  [mesh-3] ─────────── [mesh-4]
+```
+
+Record ONE person in each zone (moving a little, sitting and standing),
+90 seconds each, **twice** (two rounds, like the count recordings):
+
+```bash
+python mesh_record.py record z-front  --seconds 90
+python mesh_record.py record z-back   --seconds 90
+python mesh_record.py record z-left   --seconds 90
+python mesh_record.py record z-right  --seconds 90
+python mesh_record.py record z-centre --seconds 90
+python mesh_record.py export --out zones.csv
+```
+
+Train it (the same export can hold count and zone rows, each task uses only its own):
+
+```bash
+python train_count_model.py --task zone zones.csv
+```
+
+It saves `server/models/mesh-zone.json`. Upload it to GitHub next to
+`mesh-count.json`. When the count model says **1 person**, the radar lights up
+that zone and puts the dot there. With 2 or more people it only shows the count,
+because their signals overlap.
+
 ## Honest limits (say these if a judge asks)
 
 - The model knows **the room it was trained in**. A new room = record again.
 - People standing completely still are harder than people moving.
-- The dots on the radar show **how many**, not exact positions.
+- The dots on the radar show **how many**, not exact positions. With one person and the zone model, it shows a **rough zone**, never an exact spot.
 - Accuracy = what the training script measured on held-out sessions, nothing else.
 
 ## Troubleshooting

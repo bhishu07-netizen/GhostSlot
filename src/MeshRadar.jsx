@@ -53,6 +53,17 @@ function pairLines(links) {
   return [...pairs.values()].map((p) => ({ ...p, motion: p.sum / p.n }));
 }
 
+// The 5 zones the zone model can name (only when exactly one person is inside).
+// The two diagonals split the room into 4 triangles; the centre is where they cross.
+const C = [100, 100];
+const ZONE_SHAPES = {
+  front: { points: [CORNERS["mesh-1"], CORNERS["mesh-2"], C], anchor: [100, 52] },
+  back: { points: [CORNERS["mesh-3"], CORNERS["mesh-4"], C], anchor: [100, 148] },
+  left: { points: [CORNERS["mesh-1"], CORNERS["mesh-3"], C], anchor: [52, 100] },
+  right: { points: [CORNERS["mesh-2"], CORNERS["mesh-4"], C], anchor: [148, 100] },
+  centre: { circle: 26, anchor: C },
+};
+
 // Deterministic spots near the busiest links (no randomness, so dots don't jump).
 function peopleSpots(count, lines) {
   if (!count) return [];
@@ -83,16 +94,22 @@ export function MeshRadar({ mesh }) {
   const lines = pairLines(mesh.links);
   const maxMotion = Math.max(10, ...lines.map((l) => l.motion));
   const n = pred ? (pred.label === "5+" ? 5 : Number(pred.label)) : 0;
-  const spots = peopleSpots(n, lines);
+  const zone = pred?.zone && ZONE_SHAPES[pred.zone.label] ? pred.zone : null;
+  // With a zone (one person), the dot sits in that zone. Otherwise dots only show the count.
+  const spots = zone ? [ZONE_SHAPES[zone.label].anchor] : peopleSpots(n, lines);
   const onlineCount = Object.values(mesh.nodes).filter((d) => d.online).length;
 
   let headline, sub;
   if (pred) {
     headline = pred.label === "1" ? "1 person" : `${pred.label} people`;
     sub = sim ? "simulated count" : `${Math.round((pred.confidence ?? 0) * 100)}% sure · model`;
+    if (zone) sub += ` · ${zone.label} zone${zone.confidence != null ? ` (${Math.round(zone.confidence * 100)}%)` : ""}`;
   } else if (!mesh.model.loaded) {
     headline = "Not trained yet";
-    sub = mesh.recording.active ? `recording “${mesh.recording.label}” people` : "record labelled data to train the count model";
+    const rl = mesh.recording.label || "";
+    sub = mesh.recording.active
+      ? (rl.startsWith("z-") ? `recording one person in the ${rl.slice(2)} zone` : `recording “${rl}” people`)
+      : "record labelled data to train the count model";
   } else {
     headline = "Waiting for boards";
     sub = `${mesh.pairsHeard} of 6 board pairs heard (need ${mesh.config.minLinks})`;
@@ -127,6 +144,14 @@ export function MeshRadar({ mesh }) {
           <line x1="100" y1="12" x2="100" y2="188" stroke="rgba(196,181,253,0.05)" />
           <line x1="12" y1="100" x2="188" y2="100" stroke="rgba(196,181,253,0.05)" />
 
+          {/* the zone the model picked (one person only) */}
+          {zone && (() => {
+            const z = ZONE_SHAPES[zone.label];
+            return z.circle
+              ? <circle cx={C[0]} cy={C[1]} r={z.circle} fill={VIOLET} opacity="0.22" />
+              : <polygon points={z.points.map((p) => p.join(",")).join(" ")} fill={VIOLET} opacity="0.18" />;
+          })()}
+
           {/* links: brighter = more motion measured on that link */}
           {lines.map((l) => {
             const [x1, y1] = CORNERS[l.a]; const [x2, y2] = CORNERS[l.b];
@@ -154,7 +179,7 @@ export function MeshRadar({ mesh }) {
             );
           })}
 
-          {/* people (count is real, positions are illustrative) */}
+          {/* people: the count is real; positions are illustrative unless a zone is shown */}
           {spots.map(([x, y], i) => (
             <g key={i}>
               <circle cx={x} cy={y} r="7" fill={INK} opacity="0.12">
@@ -182,7 +207,9 @@ export function MeshRadar({ mesh }) {
       </div>
 
       <div style={{ fontSize: 10, color: FAINT, lineHeight: 1.45 }}>
-        Count estimated from Wi-Fi signals between the boards by a model trained in this room. Dots show the count, not exact positions.
+        {zone
+          ? "One person: count and zone estimated from Wi-Fi signals by models trained in this room. The zone is a rough area, not an exact spot."
+          : "Count estimated from Wi-Fi signals between the boards by a model trained in this room. Dots show the count, not exact positions."}
       </div>
     </div>
   );
@@ -199,8 +226,11 @@ export function MeshDevRows({ mesh, row }) {
       {row("Board pairs heard", `${mesh.pairsHeard} / 6`)}
       {row("Model", mesh.model.loaded ? `loaded${mesh.model.trainedAt ? " · " + mesh.model.trainedAt.slice(0, 10) : ""}` : mesh.model.reason || "not loaded")}
       {mesh.model.loaded && row("Held-out accuracy", mesh.model.testAccuracy == null ? "not tested" : `${Math.round(mesh.model.testAccuracy * 100)}%`)}
+      {row("Zone model", mesh.zoneModel?.loaded
+        ? `loaded${mesh.zoneModel.testAccuracy != null ? ` · ${Math.round(mesh.zoneModel.testAccuracy * 100)}% held-out` : ""}`
+        : mesh.zoneModel?.reason || "not loaded")}
       {row("Recording", rec.active ? `ON · label ${rec.label}` : "off")}
-      {row("Recorded windows", Object.entries(rec.rowsByLabel).map(([k, v]) => `${k}:${v}`).join(" "))}
+      {row("Recorded windows", Object.entries(rec.rowsByLabel).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(" ") || "none")}
     </>
   );
 }

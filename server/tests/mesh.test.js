@@ -13,7 +13,7 @@ process.env.SUPABASE_URL = ""; // tests never touch a real database
 
 const mesh = await import("../csimesh.js");
 const { validatePost, buildFeatures, validateModel, predictProba, createMeshEngine, buildMeshRouter,
-  FEATURE_NAMES, CLASSES, PAIRS, MISSING, GROUPS } = mesh;
+  FEATURE_NAMES, CLASSES, PAIRS, MISSING, GROUPS, ZONES, ZONE_LABELS } = mesh;
 
 const prof = (x) => Array.from({ length: GROUPS }, () => x);
 const link = (from, motion = 10) => ({ from, frames: 90, motion, rssi: -50, profile: prof(20) });
@@ -192,4 +192,65 @@ test("recordings go to Supabase when configured and come back after a restart", 
   restarted.clear();
   await new Promise((r) => setImmediate(r));
   assert.equal(table.length, 0);
+});
+
+// One-tree zone model: p1-2_motion <= 30 -> "back", otherwise "front".
+function tinyZoneModel() {
+  const f = FEATURE_NAMES.indexOf("p1-2_motion");
+  const back = ZONES.map((z) => (z === "back" ? 1 : 0));
+  const front = ZONES.map((z) => (z === "front" ? 1 : 0));
+  return { type: "random_forest", classes: ZONES, featureNames: FEATURE_NAMES,
+    trees: [{ f: [f, -2, -2], t: [30, -2, -2], l: [1, -1, -1], r: [2, -1, -1], v: [null, back, front] }],
+    meta: { task: "zone", testAccuracy: 0.7 } };
+}
+// Count model that always says "1" person.
+function alwaysOne() {
+  const leaf = CLASSES.map((c) => (c === "1" ? 1 : 0));
+  return { type: "random_forest", classes: CLASSES, featureNames: FEATURE_NAMES,
+    trees: [{ f: [-2], t: [-2], l: [-1], r: [-1], v: [leaf] }], meta: {} };
+}
+
+test("zone mode: a zone is given only when exactly one person is counted", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gs-zone-"));
+  const countFile = path.join(dir, "count.json");
+  const zoneFile = path.join(dir, "zone.json");
+  fs.writeFileSync(zoneFile, JSON.stringify(tinyZoneModel()));
+  let t = 500000;
+
+  // count = 1 -> zone predicted from the zone model
+  fs.writeFileSync(countFile, JSON.stringify(alwaysOne()));
+  const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: countFile, zoneModelPath: zoneFile });
+  eng.ingest("mesh-2", [link("mesh-1", 80), link("mesh-3", 10)]);
+  eng.tick();
+  let st = eng.status();
+  assert.equal(st.prediction.label, "1");
+  assert.equal(st.prediction.zone.label, "front");
+  assert.equal(st.zoneModel.loaded, true);
+
+  // count = 3 -> no zone, even with a zone model loaded
+  fs.writeFileSync(countFile, JSON.stringify(tinyModel()));
+  const eng3 = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: countFile, zoneModelPath: zoneFile });
+  eng3.ingest("mesh-1", [link("mesh-2", 50), link("mesh-3", 50)]);
+  eng3.tick();
+  st = eng3.status();
+  assert.equal(st.prediction.label, "3");
+  assert.equal(st.prediction.zone, null);
+
+  // a zone file holding count classes is rejected
+  fs.writeFileSync(zoneFile, JSON.stringify(tinyModel()));
+  const bad = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: countFile, zoneModelPath: zoneFile });
+  assert.equal(bad.status().zoneModel.loaded, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("zone labels can be recorded and exported", () => {
+  let t = 1_700_000_000_000;
+  const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null, zoneModelPath: null });
+  for (const z of ZONE_LABELS) assert.equal(eng.startRecording(z).ok, true);
+  assert.equal(eng.startRecording("z-ceiling").ok, false);
+  eng.startRecording("z-centre");
+  eng.ingest("mesh-1", [link("mesh-2", 30)]); eng.tick();
+  eng.stopRecording();
+  assert.equal(eng.status().recording.rowsByLabel["z-centre"], 1);
+  assert.match(eng.exportCsv(), /,z-centre,hardware,/);
 });

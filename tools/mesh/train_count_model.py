@@ -1,9 +1,16 @@
 """
-Train the GhostSlot people-count model from recorded CSI mesh data.
+Train the GhostSlot mesh models from recorded CSI data.
 
   pip install scikit-learn numpy
-  python train_count_model.py recordings.csv [more.csv ...]
-  # writes ../../server/models/mesh-count.json (the server loads it on start)
+
+  # people count (0, 1, 2, 3, 4, 5+)  -> server/models/mesh-count.json
+  python train_count_model.py round1.csv round2.csv
+
+  # zone of ONE person (front, back, left, right, centre) -> server/models/mesh-zone.json
+  python train_count_model.py --task zone round1.csv round2.csv
+
+The same CSV exports work for both: each task only uses its own labels
+('0'..'5+' for count, 'z-front'..'z-centre' for zone).
 
 How it tests itself honestly:
   * Rows are grouped into SESSIONS (one session = one 'record' run).
@@ -31,12 +38,20 @@ try:
 except ImportError:
     sys.exit("Install the training libraries first:  pip install scikit-learn numpy")
 
-CLASS_ORDER = ["0", "1", "2", "3", "4", "5+"]
+COUNT_ORDER = ["0", "1", "2", "3", "4", "5+"]
+ZONE_ORDER = ["front", "back", "left", "right", "centre"]
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_OUT = os.path.join(HERE, "..", "..", "server", "models", "mesh-count.json")
+MODELS = os.path.join(HERE, "..", "..", "server", "models")
+TASKS = {
+    # task: (class order, label in the CSV -> class name, default output file)
+    "count": (COUNT_ORDER, lambda lab: lab if lab in COUNT_ORDER else None, "mesh-count.json"),
+    "zone": (ZONE_ORDER, lambda lab: lab[2:] if lab.startswith("z-") and lab[2:] in ZONE_ORDER else None,
+             "mesh-zone.json"),
+}
+CLASS_ORDER = COUNT_ORDER  # set by main() from --task
 
 
-def load(paths, min_pairs):
+def load(paths, min_pairs, to_class):
     feature_names, rows = None, []
     for p in paths:
         with open(p, newline="") as fh:
@@ -52,10 +67,13 @@ def load(paths, min_pairs):
             for r in reader:
                 if len(r) != len(header):
                     continue
-                rows.append({"session": r[1], "label": r[2], "source": r[3],
+                cls = to_class(r[2])
+                if cls is None:
+                    continue  # a label for the other task
+                rows.append({"session": r[1], "label": cls, "source": r[3],
                              "x": [float(v) for v in r[4:]]})
     if not rows:
-        sys.exit("No rows found.")
+        sys.exit("No rows for this task found. Did you record its labels?")
     sim = sum(1 for r in rows if r["source"] != "hardware")
     if sim:
         print(f"Skipping {sim} simulated rows (only real hardware data is used).")
@@ -84,7 +102,7 @@ def make_model():
 
 
 def encode(rows):
-    # Labels are trained as class numbers (0..5) and turned back into "0".."5+" on export.
+    # Labels are trained as class numbers and turned back into names on export.
     return np.array([CLASS_ORDER.index(r["label"]) for r in rows])
 
 
@@ -121,21 +139,26 @@ def export(model, feature_names, meta, out):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Train the GhostSlot mesh people-count model")
+    global CLASS_ORDER
+    ap = argparse.ArgumentParser(description="Train the GhostSlot mesh models")
     ap.add_argument("csv", nargs="+", help="CSV files from 'mesh_record.py export'")
-    ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument("--task", choices=sorted(TASKS), default="count",
+                    help="count = how many people; zone = where ONE person is")
+    ap.add_argument("--out", default=None, help="output file (default: server/models/mesh-<task>.json)")
     ap.add_argument("--min-pairs", type=int, default=2, help="ignore windows with fewer board pairs heard")
     args = ap.parse_args()
+    CLASS_ORDER, to_class, default_name = TASKS[args.task]
+    out = args.out or os.path.join(MODELS, default_name)
 
-    names, rows = load(args.csv, args.min_pairs)
+    names, rows = load(args.csv, args.min_pairs, to_class)
     labels = sorted({r["label"] for r in rows}, key=CLASS_ORDER.index)
     print(f"{len(rows)} usable rows, labels: " +
           ", ".join(f"{l}={sum(1 for r in rows if r['label'] == l)}" for l in labels))
     if len(labels) < 2:
-        sys.exit("Need at least two different people counts to train.")
+        sys.exit("Need at least two different labels to train.")
 
     train, test, untested, sessions = split_by_session(rows)
-    meta = {"trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    meta = {"task": args.task, "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "trainRows": len(rows), "labels": labels,
             "sessionsPerLabel": {l: len(sessions[l]) for l in labels},
             "testAccuracy": None, "withinOneAccuracy": None, "testRows": len(test),
@@ -147,17 +170,21 @@ def main():
         y_true = [r["label"] for r in test]
         y_pred = [CLASS_ORDER[int(c)] for c in m.predict(np.array([r["x"] for r in test]))]
         acc = float(np.mean([a == b for a, b in zip(y_true, y_pred)]))
-        w1 = within_one(y_true, y_pred)
-        meta["testAccuracy"], meta["withinOneAccuracy"] = round(acc, 3), round(w1, 3)
+        meta["testAccuracy"] = round(acc, 3)
         print(f"\nHeld-out test ({len(test)} windows from sessions never seen in training):")
-        print(f"  exact count correct : {acc * 100:.1f}%")
-        print(f"  within +/- 1 person : {w1 * 100:.1f}%")
+        if args.task == "count":
+            w1 = within_one(y_true, y_pred)
+            meta["withinOneAccuracy"] = round(w1, 3)
+            print(f"  exact count correct : {acc * 100:.1f}%")
+            print(f"  within +/- 1 person : {w1 * 100:.1f}%")
+        else:
+            print(f"  correct zone        : {acc * 100:.1f}%  (random guessing would be {100 / len(labels):.0f}%)")
         print("\n  confusion (rows = true, columns = predicted)")
         tested = sorted(set(y_true) | set(y_pred), key=CLASS_ORDER.index)
         cm = Counter(zip(y_true, y_pred))
-        print("        " + "".join(f"{c:>6}" for c in tested))
+        print("          " + "".join(f"{c:>8}" for c in tested))
         for a in tested:
-            print(f"  {a:>4}  " + "".join(f"{cm[(a, b)]:>6}" for b in tested))
+            print(f"  {a:>7} " + "".join(f"{cm[(a, b)]:>8}" for b in tested))
     else:
         print("\nNo held-out test possible yet: record every label in at least 2 separate sessions.")
     if untested:
@@ -165,8 +192,8 @@ def main():
 
     final = make_model()
     final.fit(np.array([r["x"] for r in rows]), encode(rows))
-    size = export(final, names, meta, args.out)
-    print(f"\nSaved model ({size / 1024:.0f} KB) to {os.path.normpath(args.out)}")
+    size = export(final, names, meta, out)
+    print(f"\nSaved {args.task} model ({size / 1024:.0f} KB) to {os.path.normpath(out)}")
     print("Commit it and redeploy (or restart the local server) to use it live.")
 
 

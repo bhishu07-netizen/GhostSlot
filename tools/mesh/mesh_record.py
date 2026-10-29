@@ -16,6 +16,7 @@ Examples
   python mesh_record.py mode hardware
   python mesh_record.py record 0 --seconds 120      # empty room
   python mesh_record.py record 3 --seconds 120      # three people inside
+  python mesh_record.py record z-centre --seconds 90 # ONE person, middle of the room
   python mesh_record.py export --out recordings.csv
 """
 
@@ -29,6 +30,10 @@ import urllib.request
 
 DEFAULT_SERVER = "https://ghostslot.onrender.com"
 LABELS = ["0", "1", "2", "3", "4", "5+"]
+# Zone mode: exactly ONE person standing/moving in one zone of the room.
+# front = side with boards 1 & 2, back = boards 3 & 4, left = boards 1 & 3,
+# right = boards 2 & 4, centre = middle, where the diagonals cross.
+ZONE_LABELS = ["z-front", "z-back", "z-left", "z-right", "z-centre"]
 
 
 def check_server(server):
@@ -63,12 +68,14 @@ def call(server, path, method="GET", body=None, admin=True, raw=False):
 def show(st):
     nodes = "  ".join(f"{n}:{'on' if v['online'] else 'OFF'}" for n, v in st["nodes"].items())
     rec = st["recording"]
-    counts = "  ".join(f"{k}:{v}" for k, v in rec["rowsByLabel"].items())
+    counts = "  ".join(f"{k}:{v}" for k, v in rec["rowsByLabel"].items() if v) or "none yet"
     pred = st.get("prediction")
     pred_txt = "none"
     if pred:
         conf = f" ({pred['confidence'] * 100:.0f}% sure)" if pred.get("confidence") is not None else ""
         pred_txt = f"{pred['label']} people{conf} [{pred['source']}]"
+        if pred.get("zone"):
+            pred_txt += f", zone: {pred['zone']['label']}"
     model = st["model"]
     model_txt = (f"loaded, test accuracy {model['testAccuracy'] * 100:.0f}%"
                  if model.get("loaded") and model.get("testAccuracy") is not None
@@ -79,6 +86,8 @@ def show(st):
     print(f"recording : {'ON, label ' + rec['label'] if rec['active'] else 'off'}")
     print(f"rows      : {counts}   (total {rec['totalRows']}, {rec['sessions']} sessions)")
     print(f"model     : {model_txt}")
+    zm = st.get("zoneModel") or {}
+    print(f"zone model: {'loaded' if zm.get('loaded') else 'not loaded (' + str(zm.get('reason')) + ')'}")
     print(f"prediction: {pred_txt}")
 
 
@@ -89,7 +98,8 @@ def main():
     sub.add_parser("status")
     m = sub.add_parser("mode"); m.add_argument("mode", choices=["hardware", "simulation"])
     r = sub.add_parser("record")
-    r.add_argument("label", choices=LABELS, help="how many people are in the room")
+    r.add_argument("label", choices=LABELS + ZONE_LABELS,
+                   help="how many people are inside (0..5+), or z-<zone> for ONE person in that zone")
     r.add_argument("--seconds", type=int, default=120)
     r.add_argument("--settle", type=int, default=10, help="countdown so people can get in place")
     sub.add_parser("stop")
@@ -122,7 +132,9 @@ def main():
         if st["pairsHeard"] < 2:
             print(f"Warning: only {st['pairsHeard']} board pairs heard. Check the boards are on.")
         for i in range(args.settle, 0, -1):
-            print(f"\rGet {args.label} people in place, starting in {i:2d}s ", end="", flush=True)
+            who = (f"ONE person into the {args.label[2:]} zone" if args.label.startswith("z-")
+                   else f"{args.label} people in place")
+            print(f"\rGet {who}, starting in {i:2d}s ", end="", flush=True)
             time.sleep(1)
         print()
         call(args.server, "/api/csi/mesh/record", "POST", {"label": args.label})

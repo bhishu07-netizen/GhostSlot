@@ -11,6 +11,9 @@
 //      people count, so a model can be trained on it (tools/train_count_model.py)
 //   4. if a trained model is present (server/models/mesh-count.json), predicts
 //      the count live: 0, 1, 2, 3, 4 or 5+, with a confidence
+//   5. if a zone model is present too (server/models/mesh-zone.json) and the
+//      count is exactly 1, says which zone that person is in: front, back,
+//      left, right or centre. Zone-level only: 4 boards can't give exact spots.
 //
 // Honesty rules, enforced here:
 //   - No model loaded = no count. The status says so; nothing is invented.
@@ -37,6 +40,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const NODES = ["mesh-1", "mesh-2", "mesh-3", "mesh-4"];
 export const CLASSES = ["0", "1", "2", "3", "4", "5+"];
+// Zone mode: with exactly ONE person inside, which part of the room are they in?
+// front = the side with boards 1 and 2, back = boards 3 and 4,
+// left = boards 1 and 3, right = boards 2 and 4, centre = where the diagonals cross.
+export const ZONES = ["front", "back", "left", "right", "centre"];
+export const ZONE_LABELS = ZONES.map((z) => `z-${z}`);
+export const ALL_LABELS = [...CLASSES, ...ZONE_LABELS];
 export const GROUPS = 8;
 
 // The 6 undirected pairs, always in this order.
@@ -211,6 +220,9 @@ export function createMeshEngine(opts = {}) {
   const modelPath = opts.modelPath === undefined
     ? process.env.CSI_MESH_MODEL || path.join(__dirname, "models", "mesh-count.json")
     : opts.modelPath;
+  const zoneModelPath = opts.zoneModelPath === undefined
+    ? process.env.CSI_MESH_ZONE_MODEL || path.join(__dirname, "models", "mesh-zone.json")
+    : opts.zoneModelPath;
 
   const s = {
     mode: String(opts.mode || process.env.CSI_MESH_MODE || "simulation").trim().toLowerCase() === "hardware" ? "hardware" : "simulation",
@@ -221,24 +233,29 @@ export function createMeshEngine(opts = {}) {
     lastFeatures: null,
     lastWindowAt: null,
     recentProbs: [],
+    recentZoneProbs: [],
     prediction: null,
     model: null,
     modelError: null,
-    sim: { count: 0, ticksLeft: 0 },
+    zoneModel: null,
+    zoneModelError: null,
+    sim: { count: 0, zone: 0, ticksLeft: 0 },
   };
 
   // ---- model ----
-  function loadModel() {
-    s.model = null; s.modelError = null;
-    if (!modelPath || !fs.existsSync(modelPath)) { s.modelError = "no model trained yet"; return; }
+  function readModel(file, allowed) {
+    if (!file || !fs.existsSync(file)) return { model: null, error: "no model trained yet" };
     try {
-      const m = JSON.parse(fs.readFileSync(modelPath, "utf8"));
-      const err = validateModel(m);
-      if (err) { s.modelError = err; return; }
-      s.model = m;
-    } catch (e) {
-      s.modelError = "model file unreadable";
+      const m = JSON.parse(fs.readFileSync(file, "utf8"));
+      const err = validateModel(m) || (m.classes.every((c) => allowed.includes(c)) ? null : "unexpected classes in model");
+      return err ? { model: null, error: err } : { model: m, error: null };
+    } catch {
+      return { model: null, error: "model file unreadable" };
     }
+  }
+  function loadModel() {
+    ({ model: s.model, error: s.modelError } = readModel(modelPath, CLASSES));
+    ({ model: s.zoneModel, error: s.zoneModelError } = readModel(zoneModelPath, ZONES));
   }
   loadModel();
 
@@ -287,6 +304,7 @@ export function createMeshEngine(opts = {}) {
     const sim = s.sim;
     if (sim.ticksLeft <= 0) {
       sim.count = Math.floor(Math.random() * CLASSES.length);
+      sim.zone = Math.floor(Math.random() * ZONES.length);
       sim.ticksLeft = 8 + Math.floor(Math.random() * 8);
     }
     sim.ticksLeft--;
@@ -301,6 +319,16 @@ export function createMeshEngine(opts = {}) {
         s.latest.set(`${tx}>${rx}`, { ts: t, motion, rssi: -45 - busy - Math.random() * 3, profile });
       }
     }
+  }
+
+  // Average the last few probability vectors so the answer doesn't flicker.
+  function smoothed(buffer, p) {
+    buffer.push(p);
+    if (buffer.length > CONFIG.smoothWindows) buffer.shift();
+    const avg = p.map((_, c) => buffer.reduce((sum, q) => sum + q[c], 0) / buffer.length);
+    let best = 0;
+    for (let c = 1; c < avg.length; c++) if (avg[c] > avg[best]) best = c;
+    return { avg, best };
   }
 
   // ---- one 2-second window ----
@@ -320,30 +348,38 @@ export function createMeshEngine(opts = {}) {
     }
 
     if (s.mode === "simulation") {
-      s.prediction = { label: CLASSES[s.sim.count], confidence: null, source: "simulation", at: t };
+      const label = CLASSES[s.sim.count];
+      s.prediction = { label, confidence: null, source: "simulation", at: t,
+        zone: label === "1" ? { label: ZONES[s.sim.zone], confidence: null } : null };
     } else if (s.model && pairsHeard >= CONFIG.minLinks) {
-      const p = predictProba(s.model, features);
-      s.recentProbs.push(p);
-      if (s.recentProbs.length > CONFIG.smoothWindows) s.recentProbs.shift();
-      const avg = p.map((_, c) => s.recentProbs.reduce((sum, q) => sum + q[c], 0) / s.recentProbs.length);
-      let best = 0;
-      for (let c = 1; c < avg.length; c++) if (avg[c] > avg[best]) best = c;
+      const { avg, best } = smoothed(s.recentProbs, predictProba(s.model, features));
+      const label = s.model.classes[best];
+      // A zone is only meaningful for one person: with 2+ people their signals overlap.
+      let zone = null;
+      if (label === "1" && s.zoneModel) {
+        const z = smoothed(s.recentZoneProbs, predictProba(s.zoneModel, features));
+        zone = { label: s.zoneModel.classes[z.best], confidence: round(z.avg[z.best], 3) };
+      } else {
+        s.recentZoneProbs = [];
+      }
       s.prediction = {
-        label: s.model.classes[best],
+        label,
         confidence: round(avg[best], 3),
         probs: Object.fromEntries(s.model.classes.map((c, i) => [c, round(avg[i], 3)])),
+        zone,
         source: "model",
         at: t,
       };
     } else {
       s.recentProbs = [];
+      s.recentZoneProbs = [];
       s.prediction = null;
     }
   }
 
   // ---- controls ----
   function startRecording(label) {
-    if (!CLASSES.includes(label)) return { ok: false, error: "label must be one of " + CLASSES.join(", ") };
+    if (!ALL_LABELS.includes(label)) return { ok: false, error: "label must be one of " + ALL_LABELS.join(", ") };
     s.recording = { label, session: `s${now().toString(36)}`, startedAt: now() };
     return { ok: true };
   }
@@ -357,12 +393,13 @@ export function createMeshEngine(opts = {}) {
     s.mode = mode;
     s.latest.clear();
     s.recentProbs = [];
+    s.recentZoneProbs = [];
     s.prediction = null;
   }
 
   function status() {
     const t = now();
-    const counts = Object.fromEntries(CLASSES.map((c) => [c, 0]));
+    const counts = Object.fromEntries(ALL_LABELS.map((c) => [c, 0]));
     const sessions = new Set();
     for (const r of s.rows) { counts[r.label] = (counts[r.label] || 0) + 1; sessions.add(r.session); }
     const links = [];
@@ -387,6 +424,10 @@ export function createMeshEngine(opts = {}) {
             testAccuracy: s.model.meta?.testAccuracy ?? null, withinOneAccuracy: s.model.meta?.withinOneAccuracy ?? null,
             trainRows: s.model.meta?.trainRows ?? null }
         : { loaded: false, reason: s.modelError },
+      zoneModel: s.zoneModel
+        ? { loaded: true, classes: s.zoneModel.classes, trainedAt: s.zoneModel.meta?.trainedAt || null,
+            testAccuracy: s.zoneModel.meta?.testAccuracy ?? null, trainRows: s.zoneModel.meta?.trainRows ?? null }
+        : { loaded: false, reason: s.zoneModelError },
       recording: {
         storage: remote ? "supabase" : dataFile ? "file" : "memory",
         active: !!s.recording,

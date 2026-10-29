@@ -248,7 +248,7 @@ Four boards (`hardware/gs_mesh_node`) in the room's corners ping each other and
 report every link to `POST /api/csi/mesh`. `server/csimesh.js` turns all links
 into one feature row every 2 s, records labelled rows, and, once a model is
 trained (`tools/mesh/train_count_model.py` → `server/models/mesh-count.json`),
-predicts **0 / 1 / 2 / 3 / 4 / 5+ people** live. The app shows it as the
+predicts **0 / 1 / 2 / 3 / 4 / 5+ people** live. With exactly one person inside and a zone model (`--task zone` → `server/models/mesh-zone.json`), it also names a rough **zone**: front, back, left, right or centre. The app shows it as the
 **Wi-Fi people radar** on the Demo Room card.
 
 - No model = no count shown. Simulation mode is always labelled.
