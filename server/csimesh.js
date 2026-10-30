@@ -405,7 +405,15 @@ export function createMeshEngine(opts = {}) {
       const best = level(avg);
       // Confidence = share of the recent windows that, on their own, fall in the same level.
       const agree = s.recentMotion.filter((v) => level(v) === best).length / s.recentMotion.length;
-      s.prediction = { label: L.classes[best], confidence: round(agree, 3), zone: null, source: "levels", at: t };
+      // With exactly one person, a zone model (if trained) says where they are.
+      let zone = null;
+      if (L.classes[best] === "1" && s.zoneModel) {
+        const z = smoothed(s.recentZoneProbs, predictProba(s.zoneModel, features));
+        zone = { label: s.zoneModel.classes[z.best], confidence: round(z.avg[z.best], 3) };
+      } else {
+        s.recentZoneProbs = [];
+      }
+      s.prediction = { label: L.classes[best], confidence: round(agree, 3), zone, source: "levels", at: t };
     } else {
       s.recentProbs = [];
       s.recentZoneProbs = [];
