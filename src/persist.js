@@ -2,7 +2,7 @@
 // karma survive a reload or closing the tab. Stored in localStorage under the
 // user's id, never sent anywhere. Anything unreadable is ignored, so a broken
 // or old entry can't crash the app.
-const VERSION = 2;
+const VERSION = 3; // v3: new accounts start empty (no demo timetable/karma)
 const key = (userId) => `gs.state.v${VERSION}.${userId}`;
 
 export function loadState(userId) {

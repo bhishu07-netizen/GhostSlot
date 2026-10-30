@@ -141,6 +141,13 @@ const ROLE_TABS = {
   ],
 };
 
+const FRESH_STATS = { ghosted: 0, early: 0, onTime: 0 };
+const DEMO_STATS = { ghosted: 1, early: 5, onTime: 0 };
+function cleanStats(x) {
+  if (!x || typeof x !== "object") return null;
+  const n = (v) => (Number.isInteger(v) && v >= 0 && v < 100000 ? v : 0);
+  return { ghosted: n(x.ghosted), early: n(x.early), onTime: n(x.onTime) };
+}
 const SQUAD = [
   { name: "Ishaan", init: "IS", free: "free till 1:40", slot: "same as you" },
   { name: "Meher", init: "MH", free: "free till 2:00", slot: "same as you" },
@@ -886,7 +893,9 @@ export default function GhostSlot() {
   const [anchorsVersion, setAnchorsVersion] = useState(0);
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const restoredFor = useRef(null);
-  const [karma, setKarma] = useState(74);
+  const [karma, setKarma] = useState(0);
+  // Real per-account counters (demo accounts start with sample numbers).
+  const [stats, setStats] = useState(FRESH_STATS);
   const [extraBooked, setExtraBooked] = useState(0);
   const [pinged, setPinged] = useState({});
   const [showNotifs, setShowNotifs] = useState(false);
@@ -916,7 +925,9 @@ export default function GhostSlot() {
     const saved = loadState(currentUser.id);
     const savedSlots = saved && cleanSlots(saved.mySlots);
     const savedRooms = saved && cleanRoomSlots(saved.roomSlots);
-    setMySlots(savedSlots || (role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS));
+    // Only the shared demo accounts get the sample timetable/karma; a new sign-up starts empty.
+    const demo = !!currentUser.isDemo;
+    setMySlots(savedSlots || (demo ? (role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS) : []));
     let b = saved && saved.booking;
     const bookingOk = b && typeof b.endsAt === "number" && b.endsAt > Date.now() && typeof b.roomId === "string";
     const rooms = savedRooms || SEED_ROOM_SLOTS;
@@ -925,7 +936,9 @@ export default function GhostSlot() {
     setRoomSlots(tidy);
     setBooking(bookingOk ? b : null);
     bookingRef.current = bookingOk ? b : null;
-    if (saved && Number.isFinite(saved.karma)) setKarma(saved.karma);
+    setKarma(saved && Number.isFinite(saved.karma) ? saved.karma : (demo ? 74 : 0));
+    setStats(cleanStats(saved && saved.stats) || (demo ? DEMO_STATS : FRESH_STATS));
+    setExtraBooked(0);
     // Where you are: a fresh door scan wins over the saved spot.
     let loc = loadLocation(currentUser.id);
     try {
@@ -969,13 +982,13 @@ export default function GhostSlot() {
   const goLive = () => setClock({ live: true, ...nowIST() });
   const goDemo = () => setClock({ live: false, day: DEMO_DAY, time: DEMO_TIME });
   const pickerProps = { day, setDay, time, setTime, live: clock.live, onLive: goLive, onDemo: goDemo };
-  const [mySlots, setMySlots] = useState(SEED_MY_SLOTS);
+  const [mySlots, setMySlots] = useState([]);
   const [roomSlots, setRoomSlots] = useState(SEED_ROOM_SLOTS);
   // Save on every change (only after this user's state has been restored).
   useEffect(() => {
     if (!currentUser || restoredFor.current !== currentUser.id) return;
-    saveState(currentUser.id, { mySlots, roomSlots, booking: bookingRaw, karma });
-  }, [currentUser?.id, mySlots, roomSlots, bookingRaw, karma]);
+    saveState(currentUser.id, { mySlots, roomSlots, booking: bookingRaw, karma, stats });
+  }, [currentUser?.id, mySlots, roomSlots, bookingRaw, karma, stats]);
   const [ttSubTab, setTtSubTab] = useState("mine");
   const [myCsvSummary, setMyCsvSummary] = useState(null);
   const [roomCsvSummary, setRoomCsvSummary] = useState(null);
@@ -1039,7 +1052,7 @@ export default function GhostSlot() {
         const nb = { ...b, checkedIn: true };
         bookingRef.current = nb;
         setBooking(nb);
-        if (showKarma) setKarma((k) => k + 2);
+        if (showKarma) { setKarma((k) => k + 2); setStats((st) => ({ ...st, onTime: st.onTime + 1 })); }
         setToast(`Checked in at ${name}${via}. You actually showed up${showKarma ? " · +2 karma" : ""}.`);
       } else {
         const n = (r.counts || {})[roomId] || 1;
@@ -1070,7 +1083,7 @@ export default function GhostSlot() {
     setRoomSlots((rs) => ({ ...rs, [b.roomId]: (rs[b.roomId] || []).filter((s) => s.id !== b.slotId) }));
     setBooking(null);
     bookingRef.current = null;
-    if (showKarma) setKarma((k) => Math.max(0, k - 5));
+    if (showKarma) { setKarma((k) => Math.max(0, k - 5)); setStats((st) => ({ ...st, ghosted: st.ghosted + 1 })); }
     setToast(`No check-in within ${CHECKIN_GRACE_MIN} min, so ${b.roomName} went back to everyone. No ghost bookings 👻`);
   }, [bookingRaw, nowTick]);
 
@@ -1258,7 +1271,7 @@ export default function GhostSlot() {
     bookingRef.current = null;
     setRoomSlots((rs) => ({ ...rs, [booking.roomId]: (rs[booking.roomId] || []).filter((s) => s.id !== booking.slotId) }));
     setBooking(null);
-    if (isStudent) { setKarma((k) => k + 5); setToast("Ended early. +5 room karma — the campus thanks you."); }
+    if (showKarma) { setKarma((k) => k + 5); setStats((st) => ({ ...st, early: st.early + 1 })); setToast("Ended early. +5 room karma — the campus thanks you."); }
     else setToast("Room released early. It's back on the map for everyone.");
   }
   function ping(person) { if (pinged[person] || !once(`ping:${person}`)) return; setPinged((p) => ({ ...p, [person]: true })); setToast(`${person} has been pinged. No cap, they'll probably see it eventually.`); }
@@ -1522,7 +1535,7 @@ export default function GhostSlot() {
           <TimeDayPicker {...pickerProps} />
           {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
           <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
-            <Bell size={16} color="#F4F1FF" /><span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
+            <Bell size={16} color="#F4F1FF" />{currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
           </button>
         </div>
       </div>
@@ -1537,7 +1550,7 @@ export default function GhostSlot() {
             {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
               <Bell size={16} color="#F4F1FF" />
-              <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />
+              {currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
             </button>
           </div>
         </div>
@@ -1555,7 +1568,8 @@ export default function GhostSlot() {
 
       {showNotifs && (
         <div style={{ margin: "0 18px 10px", background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-          {(ROLE_NOTIFS[role] || ROLE_NOTIFS.student).map((n) => (
+          {!currentUser.isDemo && <div style={{ fontSize: 12.5, color: "#A39CC4", lineHeight: 1.5 }}>No notifications yet. Book a room or add your timetable and updates will show up here.</div>}
+          {currentUser.isDemo && (ROLE_NOTIFS[role] || ROLE_NOTIFS.student).map((n) => (
             <div key={n.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               <Sparkles size={13} color="#E9E3FF" style={{ marginTop: 2, flexShrink: 0 }} />
               <div><div style={{ fontSize: 13, lineHeight: 1.4 }}>{n.text}</div><div style={{ fontSize: 10.5, color: "#857DA8", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{n.time}</div></div>
@@ -1939,7 +1953,12 @@ export default function GhostSlot() {
       {view === "squad" && (
         <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 12.5, color: "#A39CC4" }}>People in your batch who are also free right now, allegedly.</div>
-          {SQUAD.map((s) => (
+          {!currentUser.isDemo && (
+            <div style={{ background: "#120F1E", borderRadius: 16, padding: 14, border: "1px dashed rgba(196,181,253,0.18)", fontSize: 12.5, color: "#A39CC4", lineHeight: 1.5 }}>
+              Your squad is empty for now. Once your batchmates join GhostSlot and add their timetables, the ones who are free when you are show up here.
+            </div>
+          )}
+          {currentUser.isDemo && SQUAD.map((s) => (
             <div key={s.name} style={{ background: "#120F1E", borderRadius: 16, padding: 13, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(196,181,253,0.07)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 12, background: "#221C3B", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: "#D2C8F5" }}>{s.init}</div>
@@ -1984,7 +2003,7 @@ export default function GhostSlot() {
           <div style={{ background: "linear-gradient(180deg, #1E1936, #100D1B)", borderRadius: 18, padding: 18, border: "1px solid rgba(196,181,253,0.07)" }}>
             <div style={{ fontSize: 11.5, color: "#A39CC4", fontFamily: "'JetBrains Mono', monospace" }}>ROOM KARMA</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: "#E9E3FF" }}>{karma}</div>
-            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>Top 12% of students who actually leave on time.</div>
+            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>{currentUser.isDemo ? "Top 12% of students who actually leave on time." : karma === 0 ? "Fresh start. Check in on time (+2) and leave early (+5) to build it up." : "Keep showing up on time to climb."}</div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
@@ -1992,15 +2011,17 @@ export default function GhostSlot() {
               <div style={{ fontSize: 11, color: "#A39CC4" }}>classes logged</div>
             </div>
             <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>1</div>
-              <div style={{ fontSize: 11, color: "#A39CC4" }}>ghosted booking (we see you)</div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{stats.ghosted}</div>
+              <div style={{ fontSize: 11, color: "#A39CC4" }}>{stats.ghosted === 0 ? "ghosted bookings (clean record)" : stats.ghosted === 1 ? "ghosted booking (we see you)" : "ghosted bookings (we see you)"}</div>
             </div>
           </div>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>Badges</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Pill tone="lime"><CheckCircle2 size={10} style={{ marginRight: 4, verticalAlign: -1 }} />early checkout x5</Pill>
-            <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />library regular</Pill>
-            <Pill tone="coral"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />1pm survivor</Pill>
+            {stats.early > 0 && <Pill tone="lime"><CheckCircle2 size={10} style={{ marginRight: 4, verticalAlign: -1 }} />early checkout x{stats.early}</Pill>}
+            {stats.onTime > 0 && <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />showed up on time x{stats.onTime}</Pill>}
+            {currentUser.isDemo && <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />library regular</Pill>}
+            {currentUser.isDemo && <Pill tone="coral"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />1pm survivor</Pill>}
+            {!currentUser.isDemo && stats.early === 0 && stats.onTime === 0 && <div style={{ fontSize: 12, color: "#A39CC4" }}>No badges yet. Book a room and check in on time to earn your first one.</div>}
           </div>
           </>)}
 
