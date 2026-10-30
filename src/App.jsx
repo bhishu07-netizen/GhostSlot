@@ -7,7 +7,7 @@ import {
   CheckCircle2, Radar, Flame, MessageCircleMore, CalendarClock, Plus, Trash2,
   LogOut, Upload, Download, FileWarning,
   Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
-  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff, QrCode,
+  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff, QrCode, ScanLine,
 } from "lucide-react";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
@@ -31,6 +31,7 @@ const ForecastChart = lazy(() => import("./charts/PredictCharts").then((m) => ({
 const UnderusedChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.UnderusedChart })));
 const DoorQrCodes = lazy(() => import("./MapTools").then((m) => ({ default: m.DoorQrCodes })));
 const CheckInQr = lazy(() => import("./CheckInQr"));
+const QrScanner = lazy(() => import("./QrScanner"));
 const GpsCalibration = lazy(() => import("./MapTools").then((m) => ({ default: m.GpsCalibration })));
 function ScreenLoading() {
   return <div role="status" style={{ margin: "0 18px", padding: 18, borderRadius: 16, background: "#120F1E", border: "1px solid rgba(196,181,253,0.14)", color: "#A39CC4", fontSize: 13 }}>Loading…</div>;
@@ -1078,6 +1079,18 @@ export default function GhostSlot() {
       if (!silent) setToast("Checked out. The room count is updated for everyone.");
     } catch { if (!silent) setToast("Couldn't check out. Try again."); }
   }
+  // In-app scanner. scan = null | { forBooking: bool }
+  const [scan, setScan] = useState(null);
+  function onScannedRoom(id) {
+    const b = bookingRef.current;
+    const wantBooking = scan && scan.forBooking;
+    setScan(null);
+    if (wantBooking && b && b.roomId !== id) {
+      setToast(`That's the QR for ${ROOM_NAME[id] || id}. Your booking is ${b.roomName}: scan the QR on that door.`);
+      return;
+    }
+    checkIn(id, "qr");
+  }
   // A scanned door QR (remembered through login) checks you in.
   useEffect(() => {
     if (!currentUser || !pendingQrRoom) return;
@@ -1481,6 +1494,9 @@ export default function GhostSlot() {
         input::placeholder { color: #857DA8; }
         @keyframes gs-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .gs-spin { animation: gs-spin 0.9s linear infinite; }
+        @keyframes gs-scan { 0% { top: 8%; } 50% { top: 90%; } 100% { top: 8%; } }
+        .gs-scanline { animation: gs-scan 2.2s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .gs-scanline { animation: none; top: 50%; } }
         @media print {
           body * { visibility: hidden !important; }
           .gs-qr-grid, .gs-qr-grid * { visibility: visible !important; }
@@ -1543,6 +1559,7 @@ export default function GhostSlot() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TimeDayPicker {...pickerProps} />
           {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
+          {role !== "facilities" && <button onClick={() => setScan({ forBooking: false })} aria-label="Scan a door QR to check in" title="Scan a door QR to check in" style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ScanLine size={16} color="#F4F1FF" /></button>}
           <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
             <Bell size={16} color="#F4F1FF" />{currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
           </button>
@@ -1557,6 +1574,7 @@ export default function GhostSlot() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
+            {role !== "facilities" && <button onClick={() => setScan({ forBooking: false })} aria-label="Scan a door QR to check in" title="Scan a door QR to check in" style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ScanLine size={16} color="#F4F1FF" /></button>}
             <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
               <Bell size={16} color="#F4F1FF" />
               {currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
@@ -1575,6 +1593,16 @@ export default function GhostSlot() {
         <TimeDayPicker {...pickerProps} />
       </div>{/* end gs-mobile-topbar */}
 
+      {scan && (
+        <Suspense fallback={null}>
+          <QrScanner knownRooms={ROOM_NAME}
+            title={scan.forBooking && booking ? `Scan the QR on ${booking.roomName}'s door` : "Scan a room's door QR"}
+            hint={scan.forBooking ? `Check in within the ${CHECKIN_GRACE_MIN} min grace time or the room goes back to everyone.` : undefined}
+            onRoom={onScannedRoom}
+            onClose={() => setScan(null)}
+            onFallback={scan.forBooking && booking ? () => { const id = booking.roomId; setScan(null); checkIn(id, "tap"); } : undefined} />
+        </Suspense>
+      )}
       {showNotifs && (
         <div style={{ margin: "0 18px 10px", background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
           {!currentUser.isDemo && <div style={{ fontSize: 12.5, color: "#A39CC4", lineHeight: 1.5 }}>No notifications yet. Book a room or add your timetable and updates will show up here.</div>}
@@ -1602,7 +1630,7 @@ export default function GhostSlot() {
             <div style={{ display: "flex", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
               <button onClick={() => { setMapFocusId(booking.roomId); setTab("map"); }} aria-label="Directions to my room" style={{ fontSize: 11, background: "rgba(10,8,18,0.12)", border: "1px solid rgba(10,8,18,0.35)", color: "#0A0812", borderRadius: 8, padding: "4px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3, fontWeight: 600 }}><Navigation size={11} /> Go</button>
               {booking.checkInBy && !booking.checkedIn && (
-                <button onClick={() => checkIn(booking.roomId, "tap")} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#C4B5FD", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>Check in</button>
+                <button onClick={() => setScan({ forBooking: true })} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#C4B5FD", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}><ScanLine size={11} style={{ marginRight: 4, verticalAlign: -2 }} />Check in</button>
               )}
               <button onClick={endEarly} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#F4F1FF", borderRadius: 8, padding: "4px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>I'm out</button>
             </div>

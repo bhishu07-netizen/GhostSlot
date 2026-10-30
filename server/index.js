@@ -61,7 +61,7 @@ app.use(helmet({
   hsts: IS_PROD ? { maxAge: 31536000, includeSubDomains: true } : false,
 }));
 app.use((_req, res, next) => {
-  res.setHeader("Permissions-Policy", "camera=(), geolocation=(self), payment=(), usb=(), microphone=(self)");
+  res.setHeader("Permissions-Policy", "camera=(self), geolocation=(self), payment=(), usb=(), microphone=(self)");
   next();
 });
 
