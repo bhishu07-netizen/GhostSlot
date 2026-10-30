@@ -7,7 +7,7 @@ import {
   CheckCircle2, Radar, Flame, MessageCircleMore, CalendarClock, Plus, Trash2,
   LogOut, Upload, Download, FileWarning,
   Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
-  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff,
+  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff, QrCode,
 } from "lucide-react";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
@@ -30,6 +30,7 @@ const OpsHome = lazy(() => import("./roles/OpsHome"));
 const ForecastChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.ForecastChart })));
 const UnderusedChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.UnderusedChart })));
 const DoorQrCodes = lazy(() => import("./MapTools").then((m) => ({ default: m.DoorQrCodes })));
+const CheckInQr = lazy(() => import("./CheckInQr"));
 const GpsCalibration = lazy(() => import("./MapTools").then((m) => ({ default: m.GpsCalibration })));
 function ScreenLoading() {
   return <div role="status" style={{ margin: "0 18px", padding: 18, borderRadius: 16, background: "#120F1E", border: "1px solid rgba(196,181,253,0.14)", color: "#A39CC4", fontSize: 13 }}>Loading…</div>;
@@ -496,12 +497,14 @@ function DemoRoomCsiBadge({ csi, onOpenDevDashboard }) {
   );
 }
 
-function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard, hereCount = 0 }) {
+function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard, hereCount = 0, showQr = true }) {
   const vm = vibeMeta[room.vibe];
   const VibeIcon = vm.icon;
   const meta = statusMeta(room, status, prefs, booking);
   const isMine = booking && booking.roomId === room.id;
   const canBook = room.bookable !== false && status.free && !hasActiveBooking;
+  const [qrOpen, setQrOpen] = useState(false);
+  const canCheckIn = !!ROOM_NAME[room.id] && showQr;
   return (
     <div style={{ background: "#120F1E", border: highlight ? "1px solid rgba(167,139,250,0.4)" : "1px solid rgba(196,181,253,0.07)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -531,7 +534,13 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
         <Pill><VibeIcon size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{vm.label}</Pill>
         {room.tags.includes("plug") && <Pill><Plug size={10} style={{ marginRight: 4, verticalAlign: -1 }} />plugs</Pill>}
         {room.tags.includes("wifi+") && <Pill><Wifi size={10} style={{ marginRight: 4, verticalAlign: -1 }} />wifi+</Pill>}
+        {canCheckIn && (
+          <button onClick={() => setQrOpen(true)} title="Show this room's door QR on screen" style={{ marginLeft: "auto", background: "rgba(196,181,253,0.06)", border: "1px solid rgba(196,181,253,0.16)", color: "#D2C8F5", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <QrCode size={11} /> check-in QR
+          </button>
+        )}
       </div>
+      {qrOpen && <Suspense fallback={null}><CheckInQr roomId={room.id} roomName={room.name} onClose={() => setQrOpen(false)} /></Suspense>}
 
       {room.csiEnabled && <MeshRadar mesh={mesh} />}
       {room.csiEnabled && <DemoRoomCsiBadge csi={csi} onOpenDevDashboard={onOpenDevDashboard} />}

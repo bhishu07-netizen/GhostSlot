@@ -48,6 +48,32 @@ export function Stat({ value, label, tone }) {
 }
 const tooltipStyle = { background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 };
 
+// Utilisation colour scale. Sequential, one hue, brightness rises with use, so
+// it reads the same way on our dark background: 0% = a faint tint just above
+// the card, 100% = bright blue. (Plain alpha on dark made 0% look "darkest",
+// which contradicted the label.) 5 even steps so the legend matches exactly.
+const HEAT_STEPS = ["#1C2236", "#1F3A63", "#2A5C9A", "#4A86D0", "#8EC1F5"];
+const HEAT_EDGES = [0, 20, 40, 60, 80, 100];
+function heatStep(v) { const p = Math.max(0, Math.min(100, v)); return Math.min(4, Math.floor(p / 20)); }
+function heatFill(v) { return HEAT_STEPS[heatStep(v)]; }
+function heatInk(v) { return heatStep(v) >= 3 ? "#0C0A15" : "#E6EDF8"; }
+function HeatLegend() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 10.5, color: C.sub, margin: "2px 0 8px" }}>
+      <span>in use</span>
+      <div style={{ display: "flex", gap: 2 }}>
+        {HEAT_STEPS.map((c, i) => (
+          <div key={c} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <div style={{ width: 34, height: 10, borderRadius: 3, background: c }} />
+            <span style={{ fontFamily: mono, fontSize: 9.5 }}>{HEAT_EDGES[i]}{i === 4 ? "–100%" : `–${HEAT_EDGES[i + 1] - 1}`}</span>
+          </div>
+        ))}
+      </div>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 14, height: 10, borderRadius: 3, border: "1px dashed rgba(196,181,253,0.25)" }} /> no data</span>
+    </div>
+  );
+}
+
 export default function Twin({ showLog = true }) {
   const [days, setDays] = useState(7);
   const [data, setData] = useState(null);
@@ -206,7 +232,8 @@ export default function Twin({ showLog = true }) {
 
       {/* Utilisation heatmap */}
       <Card>
-        <Title sub={`Share of each weekday hour a room was in use, last ${days} days. Darker = busier.`}>Classroom utilisation</Title>
+        <Title sub={`Share of each weekday hour a room was in use, last ${days} days. Brighter = busier; 0 = empty all period.`}>Classroom utilisation</Title>
+        <HeatLegend />
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "separate", borderSpacing: 3, fontSize: 10.5, minWidth: 560 }}>
             <thead>
@@ -222,9 +249,10 @@ export default function Twin({ showLog = true }) {
                   {r.cells.map((v, i) => (
                     <td key={i} title={`${r.name}, ${heat.hours[i]}:00 — ${v === null ? "no data" : v + "% in use"}`}
                       style={{ width: 36, height: 24, textAlign: "center", borderRadius: 4, fontFamily: mono,
-                        background: v === null ? "rgba(196,181,253,0.03)" : `rgba(91,155,234,${0.08 + (v / 100) * 0.85})`,
-                        color: v !== null && v > 55 ? "#0C0A15" : "#CFC7EC" }}>
-                      {v === null ? "" : Math.round(v)}
+                        background: v === null ? "transparent" : heatFill(v),
+                        border: v === null ? "1px dashed rgba(196,181,253,0.12)" : "1px solid transparent",
+                        color: v === null ? C.muted : heatInk(v) }}>
+                      {v === null ? "–" : Math.round(v)}
                     </td>
                   ))}
                 </tr>
