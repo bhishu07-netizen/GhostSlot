@@ -220,6 +220,9 @@ export function createMeshEngine(opts = {}) {
   const modelPath = opts.modelPath === undefined
     ? process.env.CSI_MESH_MODEL || path.join(__dirname, "models", "mesh-count.json")
     : opts.modelPath;
+  const levelsPath = opts.levelsPath === undefined
+    ? process.env.CSI_MESH_LEVELS || path.join(__dirname, "models", "mesh-levels.json")
+    : opts.levelsPath;
   const zoneModelPath = opts.zoneModelPath === undefined
     ? process.env.CSI_MESH_ZONE_MODEL || path.join(__dirname, "models", "mesh-zone.json")
     : opts.zoneModelPath;
@@ -239,6 +242,9 @@ export function createMeshEngine(opts = {}) {
     modelError: null,
     zoneModel: null,
     zoneModelError: null,
+    levels: null,                // calibrated occupancy levels (used when no count model)
+    levelsError: null,
+    recentMotion: [],
     sim: { count: 0, zone: 0, ticksLeft: 0 },
   };
 
@@ -253,8 +259,24 @@ export function createMeshEngine(opts = {}) {
       return { model: null, error: "model file unreadable" };
     }
   }
+  function readLevels(file) {
+    if (!file || !fs.existsSync(file)) return { levels: null, error: "no level calibration yet" };
+    try {
+      const m = JSON.parse(fs.readFileSync(file, "utf8"));
+      const th = m && m.thresholds;
+      const ok = m && m.kind === "levels" && m.feature === "motion_mean"
+        && Array.isArray(m.classes) && Array.isArray(th) && th.length === m.classes.length - 1
+        && th.every((x, i) => Number.isFinite(x) && (i === 0 || x > th[i - 1]))
+        && Number.isInteger(m.window) && m.window >= 1 && m.window <= 60
+        && m.classes.every((c) => typeof c === "string" && c.length <= 4);
+      return ok ? { levels: m, error: null } : { levels: null, error: "level calibration file is invalid" };
+    } catch {
+      return { levels: null, error: "level calibration file unreadable" };
+    }
+  }
   function loadModel() {
     ({ model: s.model, error: s.modelError } = readModel(modelPath, CLASSES));
+    ({ levels: s.levels, error: s.levelsError } = readLevels(levelsPath));
     ({ model: s.zoneModel, error: s.zoneModelError } = readModel(zoneModelPath, ZONES));
   }
   loadModel();
@@ -370,9 +392,24 @@ export function createMeshEngine(opts = {}) {
         source: "model",
         at: t,
       };
+    } else if (s.levels && pairsHeard >= CONFIG.minLinks) {
+      // Calibrated occupancy levels: average overall motion over the last
+      // `window` windows and compare with thresholds learned from labelled
+      // recordings in this room (tools/mesh/calibrate_levels.py).
+      const L = s.levels;
+      const level = (v) => { let i = 0; while (i < L.thresholds.length && v >= L.thresholds[i]) i++; return i; };
+      s.recentMotion.push(features[FEATURE_NAMES.indexOf("motion_mean")]);
+      if (s.recentMotion.length > L.window) s.recentMotion.shift();
+      if (s.recentMotion.length < Math.min(3, L.window)) { s.prediction = null; return; }
+      const avg = s.recentMotion.reduce((a, b) => a + b, 0) / s.recentMotion.length;
+      const best = level(avg);
+      // Confidence = share of the recent windows that, on their own, fall in the same level.
+      const agree = s.recentMotion.filter((v) => level(v) === best).length / s.recentMotion.length;
+      s.prediction = { label: L.classes[best], confidence: round(agree, 3), zone: null, source: "levels", at: t };
     } else {
       s.recentProbs = [];
       s.recentZoneProbs = [];
+      s.recentMotion = [];
       s.prediction = null;
     }
   }
@@ -394,6 +431,7 @@ export function createMeshEngine(opts = {}) {
     s.latest.clear();
     s.recentProbs = [];
     s.recentZoneProbs = [];
+    s.recentMotion = [];
     s.prediction = null;
   }
 
@@ -423,7 +461,10 @@ export function createMeshEngine(opts = {}) {
         ? { loaded: true, classes: s.model.classes, trainedAt: s.model.meta?.trainedAt || null,
             testAccuracy: s.model.meta?.testAccuracy ?? null, withinOneAccuracy: s.model.meta?.withinOneAccuracy ?? null,
             trainRows: s.model.meta?.trainRows ?? null }
-        : { loaded: false, reason: s.modelError },
+        : s.levels
+          ? { loaded: true, kind: "levels", classes: s.levels.classes, trainedAt: s.levels.meta?.trainedAt || null,
+              testAccuracy: s.levels.meta?.testAccuracy ?? null, withinOneAccuracy: null, trainRows: s.levels.meta?.trainRows ?? null }
+          : { loaded: false, reason: s.modelError },
       zoneModel: s.zoneModel
         ? { loaded: true, classes: s.zoneModel.classes, trainedAt: s.zoneModel.meta?.trainedAt || null,
             testAccuracy: s.zoneModel.meta?.testAccuracy ?? null, trainRows: s.zoneModel.meta?.trainRows ?? null }

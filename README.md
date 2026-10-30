@@ -266,6 +266,11 @@ predicts **0 / 1 / 2 / 3 / 4 / 5+ people** live. With exactly one person inside 
 
 - No model = no count shown. Simulation mode is always labelled.
 - Accuracy shown in the app is the held-out session accuracy from training.
+- **Calibrated levels** (`tools/mesh/calibrate_levels.py` → `server/models/mesh-levels.json`):
+  with little data, exact counts aren't reliable, so the server can instead show
+  **Empty / 1 person / 2+** from overall motion averaged over ~20 s, with cut-offs
+  learned from labelled recordings in that room. Used only when no count model is
+  present; the app labels it "calibrated levels" and shows its held-out accuracy.
 - Full setup, recording and training steps: [hardware/MESH_GUIDE.md](hardware/MESH_GUIDE.md).
 
 ---

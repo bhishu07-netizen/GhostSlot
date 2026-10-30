@@ -79,7 +79,7 @@ function tmpModelFile(model) {
 
 test("hardware mode: no model = no count; with a model it predicts from real links", () => {
   let t = 100000;
-  const noModel = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null });
+  const noModel = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null, levelsPath: null });
   noModel.ingest("mesh-1", [link("mesh-2", 50), link("mesh-3", 50)]);
   noModel.tick();
   assert.equal(noModel.status().prediction, null);
@@ -253,4 +253,28 @@ test("zone labels can be recorded and exported", () => {
   eng.stopRecording();
   assert.equal(eng.status().recording.rowsByLabel["z-centre"], 1);
   assert.match(eng.exportCsv(), /,z-centre,hardware,/);
+});
+
+test("calibrated levels: averages motion, needs 3 windows, labels Empty / 1 / 2+", () => {
+  let t = 500000;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gs-levels-"));
+  const file = path.join(dir, "mesh-levels.json");
+  fs.writeFileSync(file, JSON.stringify({ kind: "levels", feature: "motion_mean", window: 4, classes: ["0", "1", "2+"], thresholds: [66, 80], meta: { testAccuracy: 0.7 } }));
+  const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null, zoneModelPath: null, levelsPath: file });
+  assert.equal(eng.status().model.kind, "levels");
+  const step = (m) => { eng.ingest("mesh-1", [link("mesh-2", m), link("mesh-3", m)]); eng.tick(); t += 2000; };
+  step(60); step(60);
+  assert.equal(eng.status().prediction, null); // not enough windows yet
+  step(60);
+  assert.equal(eng.status().prediction.label, "0");
+  for (let i = 0; i < 4; i++) step(72);
+  assert.equal(eng.status().prediction.label, "1");
+  assert.equal(eng.status().prediction.confidence, 1);
+  for (let i = 0; i < 4; i++) step(120);
+  assert.equal(eng.status().prediction.label, "2+");
+
+  fs.writeFileSync(file, JSON.stringify({ kind: "levels", feature: "motion_mean", window: 4, classes: ["0", "1", "2+"], thresholds: [80, 66] }));
+  const bad = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null, levelsPath: file });
+  assert.equal(bad.status().model.loaded, false);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

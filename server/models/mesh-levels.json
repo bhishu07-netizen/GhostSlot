@@ -1,0 +1,21 @@
+{
+ "kind": "levels",
+ "feature": "motion_mean",
+ "window": 10,
+ "classes": [
+  "0",
+  "1",
+  "2+"
+ ],
+ "thresholds": [
+  66.44,
+  80.15
+ ],
+ "meta": {
+  "trainedAt": "2026-10-30T10:10:33Z",
+  "trainRows": 597,
+  "sessions": 10,
+  "testAccuracy": 0.675,
+  "note": "Levels from overall CSI motion averaged over the window; calibrated for one room."
+ }
+}
