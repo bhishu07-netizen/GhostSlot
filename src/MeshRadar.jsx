@@ -93,7 +93,7 @@ export function MeshRadar({ mesh }) {
   const sim = mesh.mode === "simulation";
   const lines = pairLines(mesh.links);
   const maxMotion = Math.max(10, ...lines.map((l) => l.motion));
-  const n = pred ? (pred.label === "5+" ? 5 : pred.label === "2+" ? 2 : Number(pred.label) || 0) : 0;
+  const n = pred ? (pred.label === "5+" ? 5 : pred.label === "2+" ? 2 : pred.label === "1+" ? 1 : Number(pred.label) || 0) : 0;
   const isLevels = pred?.source === "levels";
   const zone = pred?.zone && ZONE_SHAPES[pred.zone.label] ? pred.zone : null;
   // With a zone (one person), the dot sits in that zone. Otherwise dots only show the count.
@@ -102,11 +102,11 @@ export function MeshRadar({ mesh }) {
 
   let headline, sub;
   if (pred) {
-    headline = pred.label === "0" ? (isLevels ? "Empty" : "0 people") : pred.label === "1" ? "1 person" : `${pred.label} people`;
+    headline = pred.label === "0" ? (isLevels ? "Empty" : "0 people") : pred.label === "1+" ? "Occupied" : pred.label === "1" ? "1 person" : `${pred.label} people`;
     sub = sim ? "simulated count" : isLevels
       ? `${Math.round((pred.confidence ?? 0) * 100)}% steady · calibrated levels (≈20 s average)`
       : `${Math.round((pred.confidence ?? 0) * 100)}% sure · model`;
-    if (zone) sub += ` · ${zone.label} zone${zone.confidence != null ? ` (${Math.round(zone.confidence * 100)}%)` : ""}`;
+    if (zone) sub += ` · ${pred.label === "1+" ? "movement near " : ""}${zone.label} zone${zone.confidence != null ? ` (${Math.round(zone.confidence * 100)}%)` : ""}`;
   } else if (!mesh.model.loaded) {
     headline = "Not trained yet";
     const rl = mesh.recording.label || "";
@@ -191,7 +191,7 @@ export function MeshRadar({ mesh }) {
               <circle cx={x} cy={y} r="3.6" fill={INK} />
             </g>
           ))}
-          {(pred?.label === "5+" || pred?.label === "2+") && <text x="188" y="194" textAnchor="end" fontSize="10" fill={INK} fontWeight="700">+</text>}
+          {(pred?.label === "5+" || pred?.label === "2+" || pred?.label === "1+") && <text x="188" y="194" textAnchor="end" fontSize="10" fill={INK} fontWeight="700">+</text>}
         </svg>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 120, flex: 1 }}>

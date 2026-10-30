@@ -392,7 +392,7 @@ export function createMeshEngine(opts = {}) {
         source: "model",
         at: t,
       };
-    } else if (s.levels && pairsHeard >= CONFIG.minLinks) {
+    } else if (s.levels && pairsHeard >= Math.max(CONFIG.minLinks, s.levels.minPairs || 0)) {
       // Calibrated occupancy levels: average overall motion over the last
       // `window` windows and compare with thresholds learned from labelled
       // recordings in this room (tools/mesh/calibrate_levels.py).
@@ -407,7 +407,7 @@ export function createMeshEngine(opts = {}) {
       const agree = s.recentMotion.filter((v) => level(v) === best).length / s.recentMotion.length;
       // With exactly one person, a zone model (if trained) says where they are.
       let zone = null;
-      if (L.classes[best] === "1" && s.zoneModel) {
+      if ((L.classes[best] === "1" || L.classes[best] === "1+") && s.zoneModel) {
         const z = smoothed(s.recentZoneProbs, predictProba(s.zoneModel, features));
         zone = { label: s.zoneModel.classes[z.best], confidence: round(z.avg[z.best], 3) };
       } else {
