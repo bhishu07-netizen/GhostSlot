@@ -85,6 +85,9 @@ export default function Twin({ showLog = true }) {
   const [building, setBuilding] = useState("A1");
   const [water, setWater] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
+  // Simple view (plain sentences and labelled bars) is the default; charts on request.
+  const [detailed, setDetailedRaw] = useState(() => { try { return localStorage.getItem("gs.twin.detailed") === "1"; } catch { return false; } });
+  const setDetailed = (v) => { setDetailedRaw(v); try { localStorage.setItem("gs.twin.detailed", v ? "1" : "0"); } catch { /* ignore */ } };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +199,11 @@ export default function Twin({ showLog = true }) {
       <nav aria-label="Campus sections" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {SECTIONS.map(([id, label]) => <a key={id} href={`#${id}`} style={{ ...btn(), textDecoration: "none", fontSize: 13, padding: "7px 12px" }}>{label}</a>)}
       </nav>
+      <div role="group" aria-label="How to show the numbers" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: C.sub }}>Show as:</span>
+        <button onClick={() => setDetailed(false)} aria-pressed={!detailed} style={btn(!detailed)}>Simple (sentences)</button>
+        <button onClick={() => setDetailed(true)} aria-pressed={detailed} style={btn(detailed)}>Detailed charts</button>
+      </div>
 
       {/* Alerts */}
       <Card>
@@ -251,7 +259,8 @@ export default function Twin({ showLog = true }) {
       {/* Utilisation heatmap */}
       <Card>
         <div id="tw-usage" style={{ scrollMarginTop: 90 }} />
-        <Title sub={`How often each room had people in it at each weekday hour (last ${days} days). The number is the % of time in use: brighter = busier, 0 = always empty.`}>Room use by hour</Title>
+        <Title sub={detailed ? `How often each room had people in it at each weekday hour (last ${days} days). The number is the % of time in use: brighter = busier, 0 = always empty.` : `When each room is busy and when it usually sits empty (weekdays, last ${days} days).`}>Room use by hour</Title>
+        {detailed ? (<>
         <HeatLegend />
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "separate", borderSpacing: 3, fontSize: 12, minWidth: 620 }}>
@@ -280,6 +289,7 @@ export default function Twin({ showLog = true }) {
             </tbody>
           </table>
         </div>
+        </>) : <SimpleRoomUse rows={heat.rows} hours={heat.hours} />}
       </Card>
 
       {/* Suggestions */}
@@ -297,7 +307,8 @@ export default function Twin({ showLog = true }) {
       {/* Energy */}
       <Card>
         <div id="tw-energy" style={{ scrollMarginTop: 90 }} />
-        <Title icon={Zap} sub="Electricity per day in kWh (units on the bill). Blue = used while people were inside. Red = used by empty rooms.">Electricity wasted</Title>
+        <Title icon={Zap} sub={detailed ? "Electricity per day in kWh (units on the bill). Blue = used while people were inside. Red = used by empty rooms." : "Units of electricity (kWh, as on the bill) used by rooms with nobody inside, day by day."}>Electricity wasted</Title>
+        {detailed ? (
         <div style={{ height: 240 }} role="img" aria-label={`Bar chart of daily electricity: ${daily.map((d) => `${d.day}: ${d.Used} used, ${d.Wasted} wasted`).join("; ")}`}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={daily} margin={{ top: 4, right: 6, left: -10, bottom: 0 }}>
@@ -311,6 +322,7 @@ export default function Twin({ showLog = true }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
+        ) : <SimpleDaily daily={daily} />}
         <h4 style={{ fontSize: 14, color: C.text, margin: "14px 0 8px", fontWeight: 600 }}>Rooms wasting the most (last {days} days)</h4>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {data.energy.rooms.slice(0, 5).map((r) => {
@@ -331,7 +343,8 @@ export default function Twin({ showLog = true }) {
       {/* Water */}
       <Card>
         <div id="tw-water" style={{ scrollMarginTop: 90 }} />
-        <Title icon={Droplets} sub="Litres used every 15 minutes, last 48 hours. Red dots = unusually high for that time of day (possible leak or tap left open).">Water use</Title>
+        <Title icon={Droplets} sub={detailed ? "Litres used every 15 minutes, last 48 hours. Red dots = unusually high for that time of day (possible leak or tap left open)." : "Is any building using more water than normal? (possible leak or tap left open)"}>Water use</Title>
+        {detailed ? (<>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {data.buildings.map((b) => <button key={b.id} onClick={() => setBuilding(b.id)} aria-pressed={building === b.id} style={btn(building === b.id)}>{b.name}</button>)}
         </div>
@@ -347,6 +360,7 @@ export default function Twin({ showLog = true }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        </>) : <SimpleWater buildings={data.buildings} episodes={data.water.episodes} days={days} />}
         <h4 style={{ fontSize: 14, color: C.text, margin: "12px 0 8px", fontWeight: 600 }}>Unusual water use, all buildings (last {days} days)</h4>
         {data.water.episodes.length === 0 && <div style={{ fontSize: 13.5, color: C.sub }}>None found.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -370,6 +384,106 @@ export default function Twin({ showLog = true }) {
           <li>All calculations run in the database; readings are tagged <i>simulated</i> until real sensors replace them.</li>
         </ul>
       </details>
+    </div>
+  );
+}
+
+// ---- Simple view: plain sentences and labelled bars, no chart reading needed ----
+const fmtHour = (h) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}`;
+function quietRuns(cells, hours) {
+  // Consecutive hours with use under 20% (at least 2 hours long).
+  const runs = []; let start = null;
+  cells.forEach((v, i) => {
+    const quiet = v !== null && v < 20;
+    if (quiet && start === null) start = i;
+    if ((!quiet || i === cells.length - 1) && start !== null) {
+      const end = quiet ? i : i - 1;
+      if (end - start >= 1) runs.push([hours[start], hours[end] + 1]);
+      start = null;
+    }
+  });
+  return runs;
+}
+function Meter({ pct, tone }) {
+  return (
+    <span aria-hidden style={{ display: "block", height: 10, borderRadius: 5, background: "rgba(196,181,253,0.08)", overflow: "hidden" }}>
+      <span style={{ display: "block", height: 10, width: `${Math.max(2, Math.min(100, pct))}%`, background: tone, borderRadius: 5 }} />
+    </span>
+  );
+}
+export function SimpleRoomUse({ rows, hours }) {
+  const items = rows.map((r) => {
+    const vals = r.cells.filter((v) => v !== null);
+    const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    let bi = -1; r.cells.forEach((v, i) => { if (v !== null && (bi < 0 || v > r.cells[bi])) bi = i; });
+    return { ...r, avg, busiest: bi >= 0 ? hours[bi] : null, quiet: quietRuns(r.cells, hours) };
+  }).sort((a, b) => (a.avg ?? 101) - (b.avg ?? 101));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {items.map((r) => {
+        const tone = r.avg === null ? C.muted : r.avg < 30 ? C.bad : r.avg < 60 ? C.warn : C.good;
+        const verdict = r.avg === null ? "No data yet" : r.avg < 30 ? "Mostly empty" : r.avg < 60 ? "Half used" : "Well used";
+        return (
+          <div key={r.id} style={{ background: "rgba(196,181,253,0.03)", borderRadius: 12, padding: "10px 12px", border: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 600 }}>{r.name}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: tone }}>{verdict}{r.avg !== null ? ` · in use ${r.avg}% of the time` : ""}</span>
+            </div>
+            {r.avg !== null && <div style={{ margin: "8px 0 6px" }}><Meter pct={r.avg} tone={tone} /></div>}
+            {r.avg !== null && (
+              <div style={{ fontSize: 13.5, color: "#CFC7EC", lineHeight: 1.5 }}>
+                Busiest around <b>{fmtHour(r.busiest)}</b>.{" "}
+                {r.quiet.length ? <>Usually empty <b>{r.quiet.slice(0, 2).map(([a, b]) => `${fmtHour(a)}–${fmtHour(b)}`).join(" and ")}</b>, a good time to switch off or reuse it.</> : "No long empty stretch."}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+export function SimpleDaily({ daily }) {
+  const max = Math.max(1, ...daily.map((d) => d.Wasted));
+  const total = daily.reduce((a, d) => a + d.Wasted, 0);
+  const worst = daily.reduce((a, d) => (d.Wasted > (a?.Wasted ?? -1) ? d : a), null);
+  return (
+    <div>
+      <div style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 10 }}>
+        <b style={{ color: C.bad }}>{total.toLocaleString("en-IN")} units</b> of electricity were used by empty rooms in these days.
+        {worst && <> The worst day was <b>{worst.day}</b> ({worst.Wasted} units).</>}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {daily.map((d) => (
+          <div key={d.day} style={{ display: "grid", gridTemplateColumns: "64px 1fr 92px", alignItems: "center", gap: 10, fontSize: 13.5 }}>
+            <span style={{ color: "#CFC7EC" }}>{d.day}</span>
+            <Meter pct={(d.Wasted / max) * 100} tone={C.bad} />
+            <span style={{ fontFamily: mono, fontSize: 12.5, textAlign: "right" }}>{d.Wasted} wasted</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+export function SimpleWater({ buildings, episodes, days }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {buildings.map((b) => {
+        const eps = episodes.filter((e) => e.buildingId === b.id);
+        const ok = eps.length === 0;
+        const worst = eps.reduce((a, e) => (e.excessLitres > (a?.excessLitres ?? -1) ? e : a), null);
+        return (
+          <div key={b.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: ok ? "rgba(61,220,151,0.06)" : "rgba(255,107,107,0.07)", border: `1px solid ${ok ? "rgba(61,220,151,0.25)" : "rgba(255,107,107,0.3)"}` }}>
+            <span aria-hidden style={{ fontSize: 18, lineHeight: 1.2 }}>{ok ? "✅" : "⚠️"}</span>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              <b>{b.name}: {ok ? "Normal" : `Unusual use ${eps.length} time${eps.length > 1 ? "s" : ""}`}</b>
+              <div style={{ color: "#CFC7EC", fontSize: 13.5 }}>
+                {ok ? `No unusual water use in the last ${days} days.`
+                  : <>Biggest: <b>{worst.excessLitres.toLocaleString("en-IN")} L extra</b> on {ist(worst.start, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}. Check taps, tanks and pipes.</>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
