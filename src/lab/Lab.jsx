@@ -308,7 +308,8 @@ export default function Lab() {
             multipath physics model and are processed exactly like our firmware (gain normalisation → 2 s variance).
           </p>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <a className="lab-btn" href="/" style={{ ...btn(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}>← Demo Room (live boards)</a>
           <button className="lab-btn" style={btn(running)} onClick={() => setRunning((r) => !r)}>{running ? "⏸ Pause" : "▶ Run"}</button>
           <span style={{ fontFamily: mono, fontSize: 13, color: C.sub, alignSelf: "center" }}>t = {snap.t.toFixed(0)} s</span>
         </div>

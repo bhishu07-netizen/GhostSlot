@@ -544,6 +544,15 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
       {qrOpen && <Suspense fallback={null}><CheckInQr roomId={room.id} roomName={room.name} onClose={() => setQrOpen(false)} /></Suspense>}
 
       {room.csiEnabled && <MeshRadar mesh={mesh} />}
+      {room.csiEnabled && (
+        <a href="/lab" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textDecoration: "none", background: "linear-gradient(180deg, rgba(167,139,250,0.12), rgba(167,139,250,0.04))", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 14, padding: "10px 12px", color: "#F4F1FF" }}>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14 }}>Open the Sensing Lab <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0A0812", background: "#F5B544", borderRadius: 999, padding: "1px 7px", marginLeft: 4, verticalAlign: 1 }}>SIMULATION</span></span>
+            <span style={{ fontSize: 12, color: "#A39CC4", lineHeight: 1.4 }}>This room's 4-board setup as a virtual lab: move 0–10 people and watch all 12 links react.</span>
+          </span>
+          <ChevronRight size={18} color="#C4B5FD" style={{ flexShrink: 0 }} />
+        </a>
+      )}
       {room.csiEnabled && <DemoRoomCsiBadge csi={csi} onOpenDevDashboard={onOpenDevDashboard} />}
 
       {!room.bookable ? (
