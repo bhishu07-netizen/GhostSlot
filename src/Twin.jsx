@@ -31,22 +31,25 @@ export function Card({ children, style }) {
 export function Title({ icon: Icon, children, sub }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontFamily: head, fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
-        {Icon && <Icon size={15} color={C.silver} />}{children}
-      </div>
-      {sub && <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{sub}</div>}
+      <h3 style={{ fontFamily: head, fontWeight: 700, fontSize: 17, display: "flex", alignItems: "center", gap: 8, margin: 0, color: C.text }}>
+        {Icon && <Icon size={17} color={C.silver} aria-hidden />}{children}
+      </h3>
+      {sub && <div style={{ fontSize: 13, color: C.sub, marginTop: 3, lineHeight: 1.45 }}>{sub}</div>}
     </div>
   );
 }
 export function Stat({ value, label, tone }) {
   return (
     <Card style={{ flex: "1 1 140px", padding: 12 }}>
-      <div style={{ fontFamily: head, fontWeight: 700, fontSize: 22, color: tone || C.text }}>{value}</div>
-      <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{label}</div>
+      <div style={{ fontFamily: head, fontWeight: 700, fontSize: 26, color: tone || C.text }}>{value}</div>
+      <div style={{ fontSize: 12.5, color: C.sub, marginTop: 3, lineHeight: 1.4 }}>{label}</div>
     </Card>
   );
 }
-const tooltipStyle = { background: "#07060C", border: "1px solid rgba(196,181,253,0.1)", borderRadius: 10, fontSize: 12 };
+const tooltipStyle = { background: "#07060C", border: "1px solid rgba(196,181,253,0.18)", borderRadius: 10, fontSize: 13 };
+const tick = { fill: C.sub, fontSize: 12 };
+// Jump links so staff can go straight to the part they need.
+const SECTIONS = [["tw-alerts", "Alerts"], ["tw-live", "Rooms now"], ["tw-usage", "Room use"], ["tw-energy", "Electricity"], ["tw-water", "Water"]];
 
 // Utilisation colour scale. Sequential, one hue, brightness rises with use, so
 // it reads the same way on our dark background: 0% = a faint tint just above
@@ -59,13 +62,13 @@ function heatFill(v) { return HEAT_STEPS[heatStep(v)]; }
 function heatInk(v) { return heatStep(v) >= 3 ? "#0C0A15" : "#E6EDF8"; }
 function HeatLegend() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 10.5, color: C.sub, margin: "2px 0 8px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: C.sub, margin: "2px 0 10px" }}>
       <span>in use</span>
       <div style={{ display: "flex", gap: 2 }}>
         {HEAT_STEPS.map((c, i) => (
           <div key={c} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <div style={{ width: 34, height: 10, borderRadius: 3, background: c }} />
-            <span style={{ fontFamily: mono, fontSize: 9.5 }}>{HEAT_EDGES[i]}{i === 4 ? "–100%" : `–${HEAT_EDGES[i + 1] - 1}`}</span>
+            <div style={{ width: 40, height: 12, borderRadius: 3, background: c }} />
+            <span style={{ fontFamily: mono, fontSize: 11 }}>{HEAT_EDGES[i]}{i === 4 ? "–100%" : `–${HEAT_EDGES[i + 1] - 1}`}</span>
           </div>
         ))}
       </div>
@@ -156,8 +159,8 @@ export default function Twin({ showLog = true }) {
       {/* Header */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontFamily: head, fontWeight: 700, fontSize: 18 }}>Campus Digital Twin</div>
-          <div style={{ fontSize: 11.5, color: C.sub }}>Updated {hhmm(data.generatedAt)} IST · refreshes every minute</div>
+          <h2 style={{ fontFamily: head, fontWeight: 700, fontSize: 21, margin: 0 }}>Campus Digital Twin</h2>
+          <div style={{ fontSize: 13, color: C.sub }}>Updated {hhmm(data.generatedAt)} IST · refreshes every minute</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {[7, 14].map((d) => (
@@ -166,7 +169,7 @@ export default function Twin({ showLog = true }) {
           <button onClick={load} aria-label="Refresh" style={btn()}><RefreshCw size={13} className={loading ? "gs-spin" : ""} /></button>
         </div>
       </div>
-      <div role="note" style={{ fontSize: 11.5, color: C.warn, background: "rgba(245,181,68,0.08)", border: "1px solid rgba(245,181,68,0.25)", borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
+      <div role="note" style={{ fontSize: 13, lineHeight: 1.45, color: C.warn, background: "rgba(245,181,68,0.08)", border: "1px solid rgba(245,181,68,0.25)", borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
         <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
         <span><b>Simulated data.</b> CU's meters and sensors aren't connected yet, so readings come from a simulator with realistic class timings, waste and leaks. ₹ uses an assumed tariff of ₹{data.tariffInrPerKwh}/kWh.</span>
       </div>
@@ -174,45 +177,66 @@ export default function Twin({ showLog = true }) {
       {data.canManageAlerts ? (
         showLog && <LogReading rooms={data.rooms} buildings={data.buildings} onLogged={load} />
       ) : (
-        <div role="note" style={{ fontSize: 11.5, color: C.sub, background: "rgba(196,181,253,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
+        <div role="note" style={{ fontSize: 13, lineHeight: 1.45, color: C.sub, background: "rgba(196,181,253,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 10px", display: "flex", gap: 6 }}>
           <Eye size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           <span><b style={{ color: C.text }}>View only.</b> Energy and water readings are logged, and alerts handled, by facilities staff.</span>
         </div>
       )}
       {showLog && <ManualLog items={data.manualLog} />}
 
+      {/* Plain-language summary: what needs doing right now */}
+      <Card style={{ borderColor: openAlerts.length || wastingNow.length ? "rgba(255,107,107,0.35)" : "rgba(61,220,151,0.3)" }}>
+        <h3 style={{ fontFamily: head, fontWeight: 700, fontSize: 17, margin: "0 0 8px" }}>Right now</h3>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6, fontSize: 14.5, lineHeight: 1.45, color: C.text }}>
+          <li>{openAlerts.length === 0 ? "No open alerts. Nothing needs attention." : <><b style={{ color: C.bad }}>{openAlerts.length} alert{openAlerts.length > 1 ? "s" : ""}</b> need{openAlerts.length > 1 ? "" : "s"} attention. <a href="#tw-alerts" style={{ color: C.silver }}>See alerts</a></>}</li>
+          <li>{wastingNow.length === 0 ? "No empty room is using power." : <><b style={{ color: C.bad }}>{wastingNow.length} room{wastingNow.length > 1 ? "s are" : " is"} empty but powered</b>: {wastingNow.slice(0, 3).map((n) => data.rooms.find((r) => r.id === n.roomId)?.name || n.roomId).join(", ")}{wastingNow.length > 3 ? " and more" : ""}. Lights/fans/AC can be switched off.</>}</li>
+          <li>Over the last {days} days, <b>{data.energy.wastedPct}%</b> of electricity went to empty rooms (about <b>{inr(data.energy.wastedInr)}</b>).</li>
+        </ul>
+      </Card>
+      <nav aria-label="Campus sections" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {SECTIONS.map(([id, label]) => <a key={id} href={`#${id}`} style={{ ...btn(), textDecoration: "none", fontSize: 13, padding: "7px 12px" }}>{label}</a>)}
+      </nav>
+
+      {/* Alerts */}
+      <Card>
+        <div id="tw-alerts" style={{ scrollMarginTop: 90 }} />
+        <Title icon={AlertTriangle} sub={`${openAlerts.length} open · ${data.canManageAlerts ? "you can acknowledge or resolve each one (facilities access)." : "facilities staff acknowledge and resolve these."}`}>Alerts</Title>
+        <AlertList alerts={data.alerts} canManage={data.canManageAlerts} busyKey={busyKey} onAck={ack} />
+      </Card>
+
       {/* KPIs */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <Stat value={`${data.energy.wastedPct}%`} label={`of energy wasted in empty rooms (${data.energy.wastedKwh} kWh, last ${days} days)`} tone={C.bad} />
+        <Stat value={`${data.energy.wastedPct}%`} label={`of electricity used by empty rooms (${data.energy.wastedKwh} kWh = units, last ${days} days)`} tone={C.bad} />
         <Stat value={inr(data.energy.wastedInr)} label={`estimated cost of that waste`} />
         <Stat value={wastingNow.length} label="rooms empty but powered right now" tone={wastingNow.length ? C.bad : C.good} />
-        <Stat value={`${avgUtil}%`} label="average room use in class hours" />
+        <Stat value={`${avgUtil}%`} label="of class hours rooms actually had people in them" />
       </div>
 
       {/* Live twin */}
       <Card>
-        <Title icon={Building2} sub="Every tracked room, from its latest 15-minute reading.">Live campus view</Title>
+        <div id="tw-live" style={{ scrollMarginTop: 90 }} />
+        <Title icon={Building2} sub="Every tracked room, from its latest 15-minute reading.">Rooms right now</Title>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
           {Object.entries(STATE).map(([k, s]) => (
-            <span key={k} style={{ fontSize: 11, color: C.sub, display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />{s.label}
+            <span key={k} style={{ fontSize: 13, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
+              <span aria-hidden style={{ width: 12, height: 12, borderRadius: 3, background: s.color }} />{s.label}
             </span>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           {blocks.map((b) => (
             <div key={b} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 10 }}>
-              <div style={{ fontSize: 11, fontFamily: mono, color: C.silver, marginBottom: 8 }}>{b.toUpperCase()}</div>
+              <h4 style={{ fontSize: 13, fontFamily: mono, color: C.silver, margin: "0 0 8px", letterSpacing: 0.5 }}>{b.toUpperCase()}</h4>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {data.rooms.filter((r) => r.block === b).map((r) => {
                   const n = nowById.get(r.id);
                   const s = STATE[n?.state] || { color: C.muted, label: "No data" };
                   return (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(196,181,253,0.03)", borderRadius: 8, padding: "6px 8px", borderLeft: `3px solid ${s.color}` }}>
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: n?.state === "wasting" ? "rgba(255,107,107,0.07)" : "rgba(196,181,253,0.03)", borderRadius: 8, padding: "8px 10px", borderLeft: `4px solid ${s.color}` }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
-                        <div style={{ fontSize: 10.5, color: C.sub }}>
-                          {s.label}{n ? ` · ${n.occupants ? `${n.occupants}/${r.capacity} people · ` : ""}${n.powerKw.toFixed(1)} kW` : ""}
+                        <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                        <div style={{ fontSize: 12.5, color: C.sub, marginTop: 1 }}>
+                          <b style={{ color: s.color }}>{s.label}</b>{n ? ` · ${n.occupants ? `${n.occupants} of ${r.capacity} seats · ` : ""}${n.powerKw.toFixed(1)} kW` : ""}
                         </div>
                       </div>
                     </div>
@@ -224,31 +248,27 @@ export default function Twin({ showLog = true }) {
         </div>
       </Card>
 
-      {/* Alerts */}
-      <Card>
-        <Title icon={AlertTriangle} sub={`${openAlerts.length} open · ${data.canManageAlerts ? "you can acknowledge or resolve each one (facilities access)." : "facilities staff acknowledge and resolve these."}`}>Alerts</Title>
-        <AlertList alerts={data.alerts} canManage={data.canManageAlerts} busyKey={busyKey} onAck={ack} />
-      </Card>
-
       {/* Utilisation heatmap */}
       <Card>
-        <Title sub={`Share of each weekday hour a room was in use, last ${days} days. Brighter = busier; 0 = empty all period.`}>Classroom utilisation</Title>
+        <div id="tw-usage" style={{ scrollMarginTop: 90 }} />
+        <Title sub={`How often each room had people in it at each weekday hour (last ${days} days). The number is the % of time in use: brighter = busier, 0 = always empty.`}>Room use by hour</Title>
         <HeatLegend />
         <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "separate", borderSpacing: 3, fontSize: 10.5, minWidth: 560 }}>
+          <table style={{ borderCollapse: "separate", borderSpacing: 3, fontSize: 12, minWidth: 620 }}>
+            <caption style={{ position: "absolute", left: -9999 }}>Percentage of time each room was in use, by hour</caption>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", color: C.sub, fontWeight: 500, paddingRight: 6 }}>Room</th>
-                {heat.hours.map((h) => <th key={h} style={{ color: C.sub, fontWeight: 500, fontFamily: mono }}>{String(h).padStart(2, "0")}</th>)}
+                <th scope="col" style={{ textAlign: "left", color: C.sub, fontWeight: 600, paddingRight: 6, position: "sticky", left: 0, background: C.card }}>Room</th>
+                {heat.hours.map((h) => <th scope="col" key={h} style={{ color: C.sub, fontWeight: 600, fontFamily: mono, whiteSpace: "nowrap" }}>{h > 12 ? h - 12 : h}{h >= 12 ? "pm" : "am"}</th>)}
               </tr>
             </thead>
             <tbody>
               {heat.rows.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ whiteSpace: "nowrap", paddingRight: 6, color: "#CFC7EC" }}>{r.name}</td>
+                  <th scope="row" style={{ whiteSpace: "nowrap", paddingRight: 8, color: "#CFC7EC", fontWeight: 500, textAlign: "left", position: "sticky", left: 0, background: C.card, zIndex: 1 }}>{r.name}</th>
                   {r.cells.map((v, i) => (
                     <td key={i} title={`${r.name}, ${heat.hours[i]}:00 — ${v === null ? "no data" : v + "% in use"}`}
-                      style={{ width: 36, height: 24, textAlign: "center", borderRadius: 4, fontFamily: mono,
+                      style={{ width: 40, height: 28, textAlign: "center", borderRadius: 4, fontFamily: mono,
                         background: v === null ? "transparent" : heatFill(v),
                         border: v === null ? "1px dashed rgba(196,181,253,0.12)" : "1px solid transparent",
                         color: v === null ? C.muted : heatInk(v) }}>
@@ -268,7 +288,7 @@ export default function Twin({ showLog = true }) {
           <Title icon={Lightbulb} sub="Rooms that sit mostly empty during class hours.">Use what's already built</Title>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {data.suggestions.map((s) => (
-              <div key={s.roomId} style={{ fontSize: 12.5, color: "#CFC7EC", padding: "8px 10px", background: "rgba(196,181,253,0.03)", borderRadius: 10 }}>{s.text}</div>
+              <div key={s.roomId} style={{ fontSize: 14, lineHeight: 1.45, color: "#CFC7EC", padding: "10px 12px", background: "rgba(196,181,253,0.03)", borderRadius: 10 }}>{s.text}</div>
             ))}
           </div>
         </Card>
@@ -276,31 +296,32 @@ export default function Twin({ showLog = true }) {
 
       {/* Energy */}
       <Card>
-        <Title icon={Zap} sub="kWh per day: used while people were in the room vs drawn by empty rooms.">Energy waste</Title>
-        <div style={{ height: 220 }}>
+        <div id="tw-energy" style={{ scrollMarginTop: 90 }} />
+        <Title icon={Zap} sub="Electricity per day in kWh (units on the bill). Blue = used while people were inside. Red = used by empty rooms.">Electricity wasted</Title>
+        <div style={{ height: 240 }} role="img" aria-label={`Bar chart of daily electricity: ${daily.map((d) => `${d.day}: ${d.Used} used, ${d.Wasted} wasted`).join("; ")}`}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={daily} margin={{ top: 4, right: 6, left: -18, bottom: 0 }}>
+            <BarChart data={daily} margin={{ top: 4, right: 6, left: -10, bottom: 0 }}>
               <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
-              <XAxis dataKey="day" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={44} />
+              <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+              <YAxis tick={tick} axisLine={false} tickLine={false} width={44} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(196,181,253,0.04)" }} formatter={(v) => `${v} kWh`} />
-              <Legend wrapperStyle={{ fontSize: 11, color: C.sub }} />
+              <Legend wrapperStyle={{ fontSize: 13, color: C.sub }} />
               <Bar dataKey="Used" stackId="e" fill={C.blue} stroke="#120F1E" strokeWidth={2} />
               <Bar dataKey="Wasted" stackId="e" fill={C.bad} stroke="#120F1E" strokeWidth={2} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div style={{ fontSize: 11.5, color: C.sub, margin: "12px 0 6px" }}>Biggest wasters (last {days} days)</div>
+        <h4 style={{ fontSize: 14, color: C.text, margin: "14px 0 8px", fontWeight: 600 }}>Rooms wasting the most (last {days} days)</h4>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {data.energy.rooms.slice(0, 5).map((r) => {
             const max = data.energy.rooms[0].wastedKwh || 1;
             return (
-              <div key={r.roomId} style={{ display: "grid", gridTemplateColumns: "minmax(90px,130px) 1fr auto", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <div key={r.roomId} style={{ display: "grid", gridTemplateColumns: "minmax(100px,150px) 1fr auto", alignItems: "center", gap: 10, fontSize: 13.5 }}>
                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#CFC7EC" }}>{r.name}</span>
                 <span style={{ height: 8, borderRadius: 4, background: "rgba(196,181,253,0.05)" }}>
                   <span style={{ display: "block", height: 8, borderRadius: 4, width: `${(r.wastedKwh / max) * 100}%`, background: C.bad }} />
                 </span>
-                <span style={{ fontFamily: mono, fontSize: 11, textAlign: "right" }}>{Math.round(r.wastedKwh)} kWh · {inr(r.wastedInr)}</span>
+                <span style={{ fontFamily: mono, fontSize: 12.5, textAlign: "right" }}>{Math.round(r.wastedKwh)} kWh · {inr(r.wastedInr)}</span>
               </div>
             );
           })}
@@ -309,36 +330,37 @@ export default function Twin({ showLog = true }) {
 
       {/* Water */}
       <Card>
-        <Title icon={Droplets} sub="Litres per 15 minutes, last 48 hours. Red dots = abnormal for that time of day.">Water use</Title>
+        <div id="tw-water" style={{ scrollMarginTop: 90 }} />
+        <Title icon={Droplets} sub="Litres used every 15 minutes, last 48 hours. Red dots = unusually high for that time of day (possible leak or tap left open).">Water use</Title>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {data.buildings.map((b) => <button key={b.id} onClick={() => setBuilding(b.id)} aria-pressed={building === b.id} style={btn(building === b.id)}>{b.name}</button>)}
         </div>
-        <div style={{ height: 200 }}>
+        <div style={{ height: 220 }} role="img" aria-label={`Water use line chart for the selected building; ${waterSeries.filter((x) => x.flagged).length} readings flagged as abnormal`}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={waterSeries} margin={{ top: 6, right: 8, left: -14, bottom: 0 }}>
+            <LineChart data={waterSeries} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="rgba(196,181,253,0.05)" vertical={false} />
-              <XAxis dataKey="t" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} interval={23} />
-              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
+              <XAxis dataKey="t" tick={tick} axisLine={false} tickLine={false} interval={23} />
+              <YAxis tick={tick} axisLine={false} tickLine={false} width={46} />
               <Tooltip contentStyle={tooltipStyle} labelFormatter={(_, p) => p?.[0]?.payload?.full || ""} formatter={(v, _n, p) => [`${v} L${p.payload.flagged ? " · abnormal" : ""}`, "Water"]} />
               <Line type="monotone" dataKey="litres" stroke={C.blue} strokeWidth={2} isAnimationActive={false}
                 dot={(p) => p.payload.flagged ? <circle key={p.index} cx={p.cx} cy={p.cy} r={4} fill={C.bad} stroke="#120F1E" strokeWidth={2} /> : <g key={p.index} />} />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <div style={{ fontSize: 11.5, color: C.sub, margin: "10px 0 6px" }}>Abnormal episodes, all buildings (last {days} days)</div>
-        {data.water.episodes.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>None found.</div>}
+        <h4 style={{ fontSize: 14, color: C.text, margin: "12px 0 8px", fontWeight: 600 }}>Unusual water use, all buildings (last {days} days)</h4>
+        {data.water.episodes.length === 0 && <div style={{ fontSize: 13.5, color: C.sub }}>None found.</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {data.water.episodes.slice(0, 6).map((e) => (
-            <div key={e.buildingId + e.start} style={{ fontSize: 12, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <div key={e.buildingId + e.start} style={{ fontSize: 13.5, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.border}` }}>
               <span>{e.building} · {ist(e.start, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}–{hhmm(e.end)}</span>
-              <span style={{ fontFamily: mono, fontSize: 11 }}>+{e.excessLitres.toLocaleString("en-IN")} L</span>
+              <span style={{ fontFamily: mono, fontSize: 12.5, whiteSpace: "nowrap" }}>+{e.excessLitres.toLocaleString("en-IN")} L extra</span>
             </div>
           ))}
         </div>
       </Card>
 
       {/* Method */}
-      <details style={{ fontSize: 12, color: C.sub }}>
+      <details style={{ fontSize: 13.5, color: C.sub }}>
         <summary style={{ cursor: "pointer", color: C.silver }}>How these numbers are worked out</summary>
         <ul style={{ lineHeight: 1.6, paddingLeft: 18 }}>
           <li><b>Utilisation:</b> share of 15-minute weekday slots with at least one person in the room.</li>
@@ -363,8 +385,8 @@ export function LogReading({ rooms, buildings, onLogged }) {
   const [litres, setLitres] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const field = { background: "#0B0914", border: "1px solid #322A50", borderRadius: 10, padding: "8px 10px", color: C.text, fontSize: 13, minWidth: 0 };
-  const label = { fontSize: 11, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px" };
+  const field = { background: "#0B0914", border: "1px solid #4A3F72", borderRadius: 10, padding: "10px 12px", color: C.text, fontSize: 15, minWidth: 0, minHeight: 44 };
+  const label = { fontSize: 13, color: C.sub, display: "flex", flexDirection: "column", gap: 4, flex: "1 1 140px" };
 
   async function submit(e) {
     e.preventDefault();
@@ -420,7 +442,7 @@ export function LogReading({ rooms, buildings, onLogged }) {
         )}
         <button type="submit" disabled={busy} style={{ ...btn(true), padding: "8px 14px", opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save reading"}</button>
       </form>
-      {msg && <div role="status" style={{ fontSize: 12, marginTop: 8, color: msg.ok ? C.good : C.bad }}>{msg.text}</div>}
+      {msg && <div role="status" style={{ fontSize: 14, marginTop: 8, color: msg.ok ? C.good : C.bad }}>{msg.text}</div>}
     </Card>
   );
 }
@@ -428,8 +450,8 @@ export function LogReading({ rooms, buildings, onLogged }) {
 export function btn(active = false) {
   return {
     background: active ? "rgba(167,139,250,0.15)" : "rgba(196,181,253,0.04)", color: active ? "#E9E3FF" : "#CFC7EC",
-    border: `1px solid ${active ? "rgba(167,139,250,0.35)" : "rgba(196,181,253,0.1)"}`, borderRadius: 9, padding: "5px 10px",
-    fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, marginTop: 0,
+    border: `1px solid ${active ? "rgba(167,139,250,0.45)" : "rgba(196,181,253,0.18)"}`, borderRadius: 10, padding: "8px 12px", minHeight: 36,
+    fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, marginTop: 0,
   };
 }
 
@@ -441,9 +463,9 @@ export function ManualLog({ items }) {
       <Title icon={ClipboardPen} sub="Readings typed in by facilities staff (replace the simulated value for that slot).">Recently logged by facilities</Title>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {items.map((m) => (
-          <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 12, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <div key={m.kind + m.targetId + m.ts} style={{ fontSize: 13.5, color: "#CFC7EC", display: "flex", justifyContent: "space-between", gap: 8 }}>
             <span>{m.kind === "water" ? "💧" : "⚡"} {m.target} · {ist(m.ts, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
-            <span style={{ fontFamily: mono, fontSize: 11 }}>{m.text}</span>
+            <span style={{ fontFamily: mono, fontSize: 12.5 }}>{m.text}</span>
           </div>
         ))}
       </div>
@@ -453,7 +475,7 @@ export function ManualLog({ items }) {
 
 // Alert rows. Buttons only for facilities (the server checks the role again).
 export function AlertList({ alerts, canManage, busyKey, onAck, empty = "Nothing needs attention right now." }) {
-  if (!alerts.length) return <div style={{ fontSize: 12.5, color: C.sub }}>{empty}</div>;
+  if (!alerts.length) return <div style={{ fontSize: 14, color: C.sub }}>{empty}</div>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {alerts.map((a) => {
@@ -463,13 +485,13 @@ export function AlertList({ alerts, canManage, busyKey, onAck, empty = "Nothing 
           <div key={a.key} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 12, background: "rgba(196,181,253,0.03)", border: `1px solid ${a.status === "open" ? tone + "55" : C.border}`, opacity: a.status === "resolved" ? 0.55 : 1 }}>
             <Icon size={16} color={tone} style={{ flexShrink: 0, marginTop: 2 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title} <span style={{ fontSize: 10.5, color: tone, fontFamily: mono }}>{a.severity.toUpperCase()}</span></div>
-              <div style={{ fontSize: 12, color: "#CFC7EC", marginTop: 2 }}>{a.detail}</div>
-              <div style={{ fontSize: 11.5, color: C.sub, marginTop: 2 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>{a.title} <span style={{ fontSize: 11.5, color: "#0A0812", background: tone, borderRadius: 999, padding: "1px 8px", fontFamily: mono, fontWeight: 700, verticalAlign: 2 }}>{a.severity === "critical" ? "URGENT" : "CHECK"}</span></div>
+              <div style={{ fontSize: 14, color: "#CFC7EC", marginTop: 4, lineHeight: 1.45 }}>{a.detail}</div>
+              <div style={{ fontSize: 13, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{ist(a.at, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })} IST · {a.action}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
                 {canManage && a.status === "open" && <button disabled={busyKey === a.key} onClick={() => onAck(a.key, "acknowledged")} style={btn()}>Acknowledge</button>}
                 {canManage && a.status !== "resolved" && <button disabled={busyKey === a.key} onClick={() => onAck(a.key, "resolved")} style={btn()}>Mark resolved</button>}
-                {a.status !== "open" && <span style={{ fontSize: 11, color: C.good, display: "flex", gap: 4, alignItems: "center" }}><CheckCircle2 size={12} /> {a.status}</span>}
+                {a.status !== "open" && <span style={{ fontSize: 13, color: C.good, display: "flex", gap: 4, alignItems: "center" }}><CheckCircle2 size={12} /> {a.status}</span>}
               </div>
             </div>
           </div>
