@@ -39,13 +39,15 @@ import { requireDeviceKey, requireAdminKey } from "./csi.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const NODES = ["mesh-1", "mesh-2", "mesh-3", "mesh-4"];
-export const CLASSES = ["0", "1", "2", "3", "4", "5+"];
+// People counts the model can learn (0..10). "5+" is kept only so older recordings stay valid.
+export const CLASSES = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+export const LEGACY_LABELS = ["5+"];
 // Zone mode: with exactly ONE person inside, which part of the room are they in?
 // front = the side with boards 1 and 2, back = boards 3 and 4,
 // left = boards 1 and 3, right = boards 2 and 4, centre = where the diagonals cross.
 export const ZONES = ["front", "back", "left", "right", "centre"];
 export const ZONE_LABELS = ZONES.map((z) => `z-${z}`);
-export const ALL_LABELS = [...CLASSES, ...ZONE_LABELS];
+export const ALL_LABELS = [...CLASSES, ...LEGACY_LABELS, ...ZONE_LABELS];
 export const GROUPS = 8;
 
 // The 6 undirected pairs, always in this order.
@@ -67,7 +69,7 @@ const CONFIG = {
   windowMs: intEnv("CSI_MESH_WINDOW_MS", 2000),
   staleMs: intEnv("CSI_MESH_STALE_MS", 5000),       // older link readings are ignored
   minLinks: intEnv("CSI_MESH_MIN_PAIRS", 2),        // pairs needed before predicting
-  smoothWindows: intEnv("CSI_MESH_SMOOTH", 3),      // average the last N predictions
+  smoothWindows: intEnv("CSI_MESH_SMOOTH", 6),      // average the last N predictions (6 x 2 s = 12 s)
   maxRows: intEnv("CSI_MESH_MAX_ROWS", 20000),      // ~11 hours of recording
   nodeTimeoutMs: intEnv("CSI_MESH_NODE_TIMEOUT_MS", 15000),
 };
@@ -275,7 +277,7 @@ export function createMeshEngine(opts = {}) {
     }
   }
   function loadModel() {
-    ({ model: s.model, error: s.modelError } = readModel(modelPath, CLASSES));
+    ({ model: s.model, error: s.modelError } = readModel(modelPath, [...CLASSES, ...LEGACY_LABELS]));
     ({ levels: s.levels, error: s.levelsError } = readLevels(levelsPath));
     ({ model: s.zoneModel, error: s.zoneModelError } = readModel(zoneModelPath, ZONES));
   }
@@ -384,9 +386,17 @@ export function createMeshEngine(opts = {}) {
       } else {
         s.recentZoneProbs = [];
       }
+      // Expected count and a likely range from the smoothed class probabilities:
+      // steadier than the single top class when many people are inside.
+      const nums = s.model.classes.map((c) => (c === "5+" ? 5 : Number(c)));
+      const estimate = avg.reduce((acc, p, i) => acc + p * nums[i], 0);
+      const order = nums.map((n, i) => [n, avg[i]]).sort((a, b) => a[0] - b[0]);
+      const quantile = (q) => { let c = 0; for (const [n, p] of order) { c += p; if (c >= q) return n; } return order[order.length - 1][0]; };
       s.prediction = {
         label,
         confidence: round(avg[best], 3),
+        estimate: round(estimate, 1),
+        range: [quantile(0.15), quantile(0.85)],
         probs: Object.fromEntries(s.model.classes.map((c, i) => [c, round(avg[i], 3)])),
         zone,
         source: "model",

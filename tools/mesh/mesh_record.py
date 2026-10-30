@@ -29,7 +29,7 @@ import urllib.error
 import urllib.request
 
 DEFAULT_SERVER = "https://ghostslot.onrender.com"
-LABELS = ["0", "1", "2", "3", "4", "5+"]
+LABELS = [str(n) for n in range(11)]  # 0..10 people
 # Zone mode: exactly ONE person standing/moving in one zone of the room.
 # front = side with boards 1 & 2, back = boards 3 & 4, left = boards 1 & 3,
 # right = boards 2 & 4, centre = middle, where the diagonals cross.

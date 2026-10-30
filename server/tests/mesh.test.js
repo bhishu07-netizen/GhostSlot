@@ -108,7 +108,9 @@ test("labelled recording, CSV export and clear", () => {
   const { dir } = tmpModelFile(null);
   const dataFile = path.join(dir, "rec.jsonl");
   const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile, modelPath: null });
-  assert.equal(eng.startRecording("7").ok, false);
+  assert.equal(eng.startRecording("11").ok, false);
+  assert.equal(eng.startRecording("7").ok, true); // 0..10 people are valid labels
+  eng.stopRecording();
   assert.equal(eng.startRecording("2").ok, true);
   for (let i = 0; i < 3; i++) { eng.ingest("mesh-1", [link("mesh-2", 30)]); eng.tick(); t += 2000; }
   eng.stopRecording();
@@ -276,5 +278,22 @@ test("calibrated levels: averages motion, needs 3 windows, labels Empty / 1 / 2+
   fs.writeFileSync(file, JSON.stringify({ kind: "levels", feature: "motion_mean", window: 4, classes: ["0", "1", "2+"], thresholds: [80, 66] }));
   const bad = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: null, levelsPath: file });
   assert.equal(bad.status().model.loaded, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("count model reports an expected count and a likely range", () => {
+  let t = 900000;
+  const classes = ["0", "5", "10"];
+  // One tree, one leaf: 20% "0", 30% "5", 50% "10" -> estimate 6.5, range 0..10.
+  const model = { type: "random_forest", classes, featureNames: FEATURE_NAMES,
+    trees: [{ f: [-2], t: [-2], l: [-1], r: [-1], v: [[0.2, 0.3, 0.5]] }], meta: {} };
+  const { dir, file } = tmpModelFile(model);
+  const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: file, levelsPath: null, zoneModelPath: null });
+  eng.ingest("mesh-1", [link("mesh-2", 50), link("mesh-3", 50)]);
+  eng.tick();
+  const p = eng.status().prediction;
+  assert.equal(p.label, "10");
+  assert.equal(p.estimate, 6.5);
+  assert.deepEqual(p.range, [0, 10]);
   fs.rmSync(dir, { recursive: true, force: true });
 });

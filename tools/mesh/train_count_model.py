@@ -38,13 +38,13 @@ try:
 except ImportError:
     sys.exit("Install the training libraries first:  pip install scikit-learn numpy")
 
-COUNT_ORDER = ["0", "1", "2", "3", "4", "5+"]
+COUNT_ORDER = [str(n) for n in range(11)]  # 0..10 people ("5+" from old recordings counts as 5)
 ZONE_ORDER = ["front", "back", "left", "right", "centre"]
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODELS = os.path.join(HERE, "..", "..", "server", "models")
 TASKS = {
     # task: (class order, label in the CSV -> class name, default output file)
-    "count": (COUNT_ORDER, lambda lab: lab if lab in COUNT_ORDER else None, "mesh-count.json"),
+    "count": (COUNT_ORDER, lambda lab: "5" if lab == "5+" else lab if lab in COUNT_ORDER else None, "mesh-count.json"),
     "zone": (ZONE_ORDER, lambda lab: lab[2:] if lab.startswith("z-") and lab[2:] in ZONE_ORDER else None,
              "mesh-zone.json"),
 }
@@ -111,6 +111,13 @@ def within_one(y_true, y_pred):
     return float(np.mean([abs(idx[a] - idx[b]) <= 1 for a, b in zip(y_true, y_pred)]))
 
 
+COLS = None  # feature columns used (None = all); set by main() from --features
+
+
+def select(xs):
+    return xs if COLS is None else [[x[i] for i in COLS] for x in xs]
+
+
 def export(model, feature_names, meta, out):
     trees = []
     for est in model.estimators_:
@@ -119,7 +126,8 @@ def export(model, feature_names, meta, out):
         tree = {"f": [], "t": [], "l": [], "r": [], "v": []}
         for i in range(n):
             leaf = t.children_left[i] == -1
-            tree["f"].append(-2 if leaf else int(t.feature[i]))
+            fi = int(t.feature[i])
+            tree["f"].append(-2 if leaf else (fi if COLS is None else COLS[fi]))  # index into the full feature row
             tree["t"].append(-2 if leaf else round(float(t.threshold[i]), 6))
             tree["l"].append(int(t.children_left[i]))
             tree["r"].append(int(t.children_right[i]))
@@ -146,11 +154,16 @@ def main():
                     help="count = how many people; zone = where ONE person is")
     ap.add_argument("--out", default=None, help="output file (default: server/models/mesh-<task>.json)")
     ap.add_argument("--min-pairs", type=int, default=2, help="ignore windows with fewer board pairs heard")
+    ap.add_argument("--features", choices=["all", "motion+rssi"], default="all",
+                    help="motion+rssi drops the subcarrier-profile columns (often steadier across sessions)")
     args = ap.parse_args()
     CLASS_ORDER, to_class, default_name = TASKS[args.task]
     out = args.out or os.path.join(MODELS, default_name)
 
     names, rows = load(args.csv, args.min_pairs, to_class)
+    global COLS
+    if args.features == "motion+rssi":
+        COLS = [i for i, n in enumerate(names) if n.endswith(("_motion", "_rssi")) or n in ("motion_mean", "motion_max", "motion_std", "links_present")]
     labels = sorted({r["label"] for r in rows}, key=CLASS_ORDER.index)
     print(f"{len(rows)} usable rows, labels: " +
           ", ".join(f"{l}={sum(1 for r in rows if r['label'] == l)}" for l in labels))
@@ -158,7 +171,7 @@ def main():
         sys.exit("Need at least two different labels to train.")
 
     train, test, untested, sessions = split_by_session(rows)
-    meta = {"task": args.task, "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    meta = {"task": args.task, "features": args.features, "trainedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "trainRows": len(rows), "labels": labels,
             "sessionsPerLabel": {l: len(sessions[l]) for l in labels},
             "testAccuracy": None, "withinOneAccuracy": None, "testRows": len(test),
@@ -166,9 +179,9 @@ def main():
 
     if test and len({r["label"] for r in train}) >= 2:
         m = make_model()
-        m.fit(np.array([r["x"] for r in train]), encode(train))
+        m.fit(np.array(select([r["x"] for r in train])), encode(train))
         y_true = [r["label"] for r in test]
-        y_pred = [CLASS_ORDER[int(c)] for c in m.predict(np.array([r["x"] for r in test]))]
+        y_pred = [CLASS_ORDER[int(c)] for c in m.predict(np.array(select([r["x"] for r in test])))]
         acc = float(np.mean([a == b for a, b in zip(y_true, y_pred)]))
         meta["testAccuracy"] = round(acc, 3)
         print(f"\nHeld-out test ({len(test)} windows from sessions never seen in training):")
@@ -179,6 +192,30 @@ def main():
             print(f"  within +/- 1 person : {w1 * 100:.1f}%")
         else:
             print(f"  correct zone        : {acc * 100:.1f}%  (random guessing would be {100 / len(labels):.0f}%)")
+        if args.task == "count":
+            # What the live radar shows: probabilities averaged over the last 6
+            # windows (12 s), turned into an expected count.
+            nums = np.array([int(CLASS_ORDER[int(c)]) for c in m.classes_])
+            proba = m.predict_proba(np.array(select([r["x"] for r in test])))
+            est, buf, prev = [], [], None
+            for r, p in zip(test, proba):
+                if r["session"] != prev:
+                    buf, prev = [], r["session"]
+                buf.append(p)
+                buf = buf[-6:]
+                est.append(float(np.mean(buf, axis=0) @ nums))
+            true_n = np.array([int(l) for l in y_true])
+            err = np.abs(np.rint(est) - true_n)
+            meta["liveExact"] = round(float(np.mean(err == 0)), 3)
+            meta["liveWithinOne"] = round(float(np.mean(err <= 1)), 3)
+            meta["liveWithinTwo"] = round(float(np.mean(err <= 2)), 3)
+            meta["liveMeanError"] = round(float(np.mean(np.abs(np.array(est) - true_n))), 2)
+            print(f"\n  LIVE-STYLE estimate (12 s smoothing, what the radar shows):")
+            print(f"    exact {meta['liveExact']*100:.0f}%   within ±1: {meta['liveWithinOne']*100:.0f}%   "
+                  f"within ±2: {meta['liveWithinTwo']*100:.0f}%   average error: {meta['liveMeanError']} people")
+            for lab in sorted(set(y_true), key=CLASS_ORDER.index):
+                e = [x for x, l in zip(est, y_true) if l == lab]
+                print(f"    true {lab:>2}: average estimate {np.mean(e):.1f}")
         print("\n  confusion (rows = true, columns = predicted)")
         tested = sorted(set(y_true) | set(y_pred), key=CLASS_ORDER.index)
         cm = Counter(zip(y_true, y_pred))
@@ -191,7 +228,7 @@ def main():
         print(f"\nNot tested (only one session): {', '.join(untested)}. Record these again.")
 
     final = make_model()
-    final.fit(np.array([r["x"] for r in rows]), encode(rows))
+    final.fit(np.array(select([r["x"] for r in rows])), encode(rows))
     size = export(final, names, meta, out)
     print(f"\nSaved {args.task} model ({size / 1024:.0f} KB) to {os.path.normpath(out)}")
     print("Commit it and redeploy (or restart the local server) to use it live.")
