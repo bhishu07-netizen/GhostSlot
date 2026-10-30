@@ -242,6 +242,19 @@ Both features are for signed-in users only and are rate-limited per account.
 
 ---
 
+## Room check-in (new in 0.6)
+
+- **Book a room, then check in within 10 minutes**: scan the room's door QR
+  (Map → facilities → Door QR codes, printed on each door) or tap **Check in**.
+  No check-in → the booking is released for everyone. No ghost bookings.
+- **Scanning a door QR without a booking** checks you in as a walk-in.
+- Room cards show **"N checked in"**, live for everyone. Only counts are shared,
+  never names (`server/checkin.js`, table `gs_checkins`, migration `0009`).
+- Privacy: a row exists only while you're checked in; checking out or the time
+  running out deletes it. No history is kept.
+
+---
+
 ## Demo Room: people count from the CSI mesh (new in 0.5)
 
 Four boards (`hardware/gs_mesh_node`) in the room's corners ping each other and

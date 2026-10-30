@@ -33,7 +33,7 @@ export function DoorQrCodes({ rooms }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <div>
           <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15, display: "flex", gap: 6, alignItems: "center" }}><QrCode size={15} color="#C4B5FD" /> Door QR codes</div>
-          <div style={{ fontSize: 11.5, color: "#A39CC4" }}>Stick one on each door. Scanning it shows the closest free rooms from that exact spot.</div>
+          <div style={{ fontSize: 11.5, color: "#A39CC4" }}>Stick one on each door. Scanning it checks the person into that room and shows the closest free spots from there.</div>
         </div>
         <button onClick={() => window.print()} style={btn(true)} disabled={!codes.length}><Printer size={13} /> Print</button>
       </div>

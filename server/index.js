@@ -3,6 +3,7 @@
 //   • CampusAI chat + AI room-search parsing (Gemini) (this file)
 //   • Demo Room Wi-Fi CSI sensing                      (csi.js)
 //   • Demo Room people count from the CSI mesh        (csimesh.js)
+//   • Room check-in (door QR / tap, counts only)      (checkin.js)
 //   • In production, also serves the built frontend so the whole app runs
 //     on one origin with strict security headers.
 //
@@ -117,6 +118,12 @@ const { buildTwin } = await import("./twin.js");
 const twinLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
 app.use("/api/twin", twinLimiter);
 app.use("/api", buildTwin({ requireAuth, sameOriginOnly }));
+
+// Room check-in (who is actually in a room). Signed-in users only; counts only.
+const { buildCheckins } = await import("./checkin.js");
+const checkinLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
+app.use("/api/checkins", checkinLimiter);
+app.use("/api", buildCheckins({ requireAuth, sameOriginOnly }));
 
 // ---------------------------------------------------------------------------
 // Gemini (CampusAI chat + AI room search). Signed-in users only, rate

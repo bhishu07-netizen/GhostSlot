@@ -425,6 +425,11 @@ function GhostMeter({ pct, height = 10 }) {
   );
 }
 
+// Room check-in (server/checkin.js): a booking must be checked into within
+// this many minutes (door QR or the "Check in" button), else it is released.
+const CHECKIN_GRACE_MIN = 10;
+const ROOM_NAME = Object.fromEntries(STUDY_ROOMS.map((r) => [r.id, r.name]));
+
 function Pill({ children, tone = "default" }) {
   const tones = {
     default: { bg: "rgba(196,181,253,0.06)", color: "#D2C8F5", border: "rgba(196,181,253,0.12)" },
@@ -484,7 +489,7 @@ function DemoRoomCsiBadge({ csi, onOpenDevDashboard }) {
   );
 }
 
-function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard }) {
+function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard, hereCount = 0 }) {
   const vm = vibeMeta[room.vibe];
   const VibeIcon = vm.icon;
   const meta = statusMeta(room, status, prefs, booking);
@@ -514,6 +519,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {hereCount > 0 && <Pill tone="lime"><Users size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{hereCount} checked in</Pill>}
         <Pill><Users size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{room.capacity} seats</Pill>
         <Pill><VibeIcon size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{vm.label}</Pill>
         {room.tags.includes("plug") && <Pill><Plug size={10} style={{ marginRight: 4, verticalAlign: -1 }} />plugs</Pill>}
@@ -928,6 +934,7 @@ export default function GhostSlot() {
         sessionStorage.removeItem("gs.pendingAt");
         const place = findPlace(placeList(ROOM_META), at);
         if (place) { loc = { x: place.x, y: place.y, label: place.label, placeId: place.id, source: "qr", at: Date.now() }; setToast(`You're at ${place.label}. Showing the closest free spots from here.`); }
+        if (ROOM_NAME[at] && role !== "facilities") setPendingQrRoom(at); // a room's door QR also checks you in
       }
     } catch { /* ignore */ }
     setYouRaw(loc);
@@ -1006,6 +1013,65 @@ export default function GhostSlot() {
     setBooking(null);
     bookingRef.current = null;
     setToast("Time's up. Room released automatically. Vacate before the next class catches you red-handed.");
+  }, [bookingRaw, nowTick]);
+
+  // ---- Room check-in (server/checkin.js). Counts come from the server; names never do.
+  const [checkins, setCheckins] = useState({ mine: null, counts: {} });
+  const [pendingQrRoom, setPendingQrRoom] = useState(null);
+  const loadCheckins = () => api("/checkins").then((r) => setCheckins({ mine: r.mine || null, counts: r.counts || {} })).catch(() => {});
+  useEffect(() => {
+    if (!currentUser) { setCheckins({ mine: null, counts: {} }); return; }
+    loadCheckins();
+    const t = setInterval(loadCheckins, 15000);
+    return () => clearInterval(t);
+  }, [currentUser?.id]);
+  async function checkIn(roomId, method) {
+    if (role === "facilities" || !once(`checkin:${roomId}`, 1500)) return;
+    const b = bookingRef.current;
+    const forBooking = !!b && b.roomId === roomId;
+    const minutes = forBooking ? Math.min(180, Math.max(15, Math.ceil((b.endsAt - Date.now()) / 60000))) : 60;
+    try {
+      const r = await api("/checkins", { method: "POST", body: { roomId, minutes, method } });
+      setCheckins({ mine: r.mine || null, counts: r.counts || {} });
+      const name = ROOM_NAME[roomId] || roomId;
+      const via = method === "qr" ? " via the door QR" : "";
+      if (forBooking && !b.checkedIn) {
+        const nb = { ...b, checkedIn: true };
+        bookingRef.current = nb;
+        setBooking(nb);
+        if (showKarma) setKarma((k) => k + 2);
+        setToast(`Checked in at ${name}${via}. You actually showed up${showKarma ? " · +2 karma" : ""}.`);
+      } else {
+        const n = (r.counts || {})[roomId] || 1;
+        setToast(`Checked in at ${name}${via}. ${n === 1 ? "You're the only one here." : `${n} people here now.`}`);
+      }
+    } catch (e) {
+      setToast(e.status === 400 ? "That room can't be checked into." : e.message || "Couldn't check in. Try again.");
+    }
+  }
+  async function checkOut(silent = false) {
+    try {
+      const r = await api("/checkins/me", { method: "DELETE" });
+      setCheckins({ mine: null, counts: r.counts || {} });
+      if (!silent) setToast("Checked out. The room count is updated for everyone.");
+    } catch { if (!silent) setToast("Couldn't check out. Try again."); }
+  }
+  // A scanned door QR (remembered through login) checks you in.
+  useEffect(() => {
+    if (!currentUser || !pendingQrRoom) return;
+    const id = pendingQrRoom;
+    setPendingQrRoom(null);
+    checkIn(id, "qr");
+  }, [currentUser?.id, pendingQrRoom]);
+  // Booked but never checked in: release it after the grace period.
+  useEffect(() => {
+    const b = bookingRaw;
+    if (!b || b.checkedIn || !b.checkInBy || nowTick < b.checkInBy) return;
+    setRoomSlots((rs) => ({ ...rs, [b.roomId]: (rs[b.roomId] || []).filter((s) => s.id !== b.slotId) }));
+    setBooking(null);
+    bookingRef.current = null;
+    if (showKarma) setKarma((k) => Math.max(0, k - 5));
+    setToast(`No check-in within ${CHECKIN_GRACE_MIN} min, so ${b.roomName} went back to everyone. No ghost bookings 👻`);
   }, [bookingRaw, nowTick]);
 
   // Online / offline banner.
@@ -1180,14 +1246,15 @@ export default function GhostSlot() {
     const slotId = `book_${Date.now()}`;
     const label = role === "faculty" ? `${subject || "Extra class"} (you)` : "Reserved (you)";
     setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: label }] }));
-    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000 };
+    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000, checkInBy: Date.now() + CHECKIN_GRACE_MIN * 60 * 1000, checkedIn: false };
     bookingRef.current = nb;
     setBooking(nb);
     if (role === "faculty") setExtraBooked((n) => n + 1);
-    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}.` : `${room.name} is yours for ${fmtMin(duration)}. Don't ghost it.`);
+    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}. Check in within ${CHECKIN_GRACE_MIN} min.` : `${room.name} is yours for ${fmtMin(duration)}. Check in within ${CHECKIN_GRACE_MIN} min or it goes back to everyone.`);
   }
   function endEarly() {
     if (!booking || !once("end", 1000)) return;
+    if (checkins.mine && checkins.mine.roomId === booking.roomId) checkOut(true);
     bookingRef.current = null;
     setRoomSlots((rs) => ({ ...rs, [booking.roomId]: (rs[booking.roomId] || []).filter((s) => s.id !== booking.slotId) }));
     setBooking(null);
@@ -1502,14 +1569,31 @@ export default function GhostSlot() {
           <div>
             <div style={{ fontSize: 11, color: "rgba(10,8,18,0.6)", fontFamily: "'JetBrains Mono', monospace" }}>RESERVED BY YOU</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>{booking.roomName}</div>
+            {booking.checkInBy && !booking.checkedIn && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#5B2A00", marginTop: 2 }}>Check in within {fmt(Math.max(0, Math.round((booking.checkInBy - nowTick) / 1000)))} · door QR</div>
+            )}
+            {booking.checkedIn && <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(10,8,18,0.7)", marginTop: 2 }}>✓ Checked in</div>}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 500 }}>{fmt(booking.secondsLeft)}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
               <button onClick={() => { setMapFocusId(booking.roomId); setTab("map"); }} aria-label="Directions to my room" style={{ fontSize: 11, background: "rgba(10,8,18,0.12)", border: "1px solid rgba(10,8,18,0.35)", color: "#0A0812", borderRadius: 8, padding: "4px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3, fontWeight: 600 }}><Navigation size={11} /> Go</button>
-              <button onClick={endEarly} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#F4F1FF", borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>I'm out</button>
+              {booking.checkInBy && !booking.checkedIn && (
+                <button onClick={() => checkIn(booking.roomId, "tap")} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#C4B5FD", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>Check in</button>
+              )}
+              <button onClick={endEarly} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#F4F1FF", borderRadius: 8, padding: "4px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>I'm out</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {checkins.mine && !(booking && booking.roomId === checkins.mine.roomId) && (
+        <div style={{ margin: "0 18px 14px", background: "rgba(61,220,151,0.08)", border: "1px solid rgba(61,220,151,0.3)", borderRadius: 14, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12.5, color: "#E9E3FF" }}>
+            <span style={{ color: "#3DDC97", fontWeight: 700 }}>✓ Checked in</span> at <b>{ROOM_NAME[checkins.mine.roomId] || checkins.mine.roomId}</b>
+            {checkins.mine.method === "qr" && <span style={{ color: "#A39CC4" }}> · via door QR</span>}
+          </div>
+          <button onClick={() => checkOut()} style={{ fontSize: 11, background: "rgba(196,181,253,0.08)", border: "1px solid rgba(196,181,253,0.2)", color: "#E9E3FF", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Check out</button>
         </div>
       )}
 
@@ -1706,7 +1790,7 @@ export default function GhostSlot() {
             <div className="gs-room-grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
               {restOfList.map(({ room, status, score }) => (
-                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} />
+                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} hereCount={checkins.counts[room.id] || 0} />
               ))}
             </div>
           )}
