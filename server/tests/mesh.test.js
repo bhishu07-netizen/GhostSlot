@@ -298,7 +298,7 @@ test("count model reports an expected count and a likely range", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("count model: low motion and a non-empty guess reports 'no movement' instead of a number", () => {
+test("count model: shows the exact number even at low motion (quiet guard off by default)", () => {
   let t = 950000;
   const model = { type: "random_forest", classes: ["0", "6"], featureNames: FEATURE_NAMES,
     trees: [{ f: [-2], t: [-2], l: [-1], r: [-1], v: [[0.1, 0.9]] }], meta: {} };
@@ -308,7 +308,7 @@ test("count model: low motion and a non-empty guess reports 'no movement' instea
   const eng = createMeshEngine({ mode: "hardware", now: () => t, dataFile: null, modelPath: file, levelsPath: lv, zoneModelPath: null });
   const step = (m) => { eng.ingest("mesh-1", [link("mesh-2", m), link("mesh-3", m)]); eng.tick(); t += 2000; };
   for (let i = 0; i < 4; i++) step(50);
-  assert.equal(eng.status().prediction.label, "quiet");
+  assert.equal(eng.status().prediction.label, "6");
   for (let i = 0; i < 6; i++) step(120);
   assert.equal(eng.status().prediction.label, "6");
   fs.rmSync(dir, { recursive: true, force: true });

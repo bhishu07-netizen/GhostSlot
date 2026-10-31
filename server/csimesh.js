@@ -70,7 +70,7 @@ const CONFIG = {
   staleMs: intEnv("CSI_MESH_STALE_MS", 5000),       // older link readings are ignored
   minLinks: intEnv("CSI_MESH_MIN_PAIRS", 2),        // pairs needed before predicting
   smoothWindows: intEnv("CSI_MESH_SMOOTH", 6),
-  quietMotion: intEnv("CSI_MESH_QUIET", 0),         // motion below this = no movement (0 = use the levels cut-off)      // average the last N predictions (6 x 2 s = 12 s)
+  quietMotion: intEnv("CSI_MESH_QUIET", 0),         // motion below this = no movement (0 = off, always show the count)      // average the last N predictions (6 x 2 s = 12 s)
   maxRows: intEnv("CSI_MESH_MAX_ROWS", 20000),      // ~11 hours of recording
   nodeTimeoutMs: intEnv("CSI_MESH_NODE_TIMEOUT_MS", 15000),
 };
@@ -382,7 +382,7 @@ export function createMeshEngine(opts = {}) {
       // guess. Say so instead of inventing a number.
       s.recentMotion.push(features[FEATURE_NAMES.indexOf("motion_mean")]);
       if (s.recentMotion.length > 5) s.recentMotion.shift();
-      const quietAt = CONFIG.quietMotion || (s.levels ? s.levels.thresholds[0] : 0);
+      const quietAt = CONFIG.quietMotion;   // off unless CSI_MESH_QUIET is set: always show the exact count
       const motionAvg = s.recentMotion.reduce((a, b) => a + b, 0) / s.recentMotion.length;
       const { avg, best } = smoothed(s.recentProbs, predictProba(s.model, features));
       // Low motion: trust the model only when it says "empty"; otherwise don't guess.
