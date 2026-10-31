@@ -69,7 +69,8 @@ const CONFIG = {
   windowMs: intEnv("CSI_MESH_WINDOW_MS", 2000),
   staleMs: intEnv("CSI_MESH_STALE_MS", 5000),       // older link readings are ignored
   minLinks: intEnv("CSI_MESH_MIN_PAIRS", 2),        // pairs needed before predicting
-  smoothWindows: intEnv("CSI_MESH_SMOOTH", 6),      // average the last N predictions (6 x 2 s = 12 s)
+  smoothWindows: intEnv("CSI_MESH_SMOOTH", 6),
+  quietMotion: intEnv("CSI_MESH_QUIET", 0),         // motion below this = no movement (0 = use the levels cut-off)      // average the last N predictions (6 x 2 s = 12 s)
   maxRows: intEnv("CSI_MESH_MAX_ROWS", 20000),      // ~11 hours of recording
   nodeTimeoutMs: intEnv("CSI_MESH_NODE_TIMEOUT_MS", 15000),
 };
@@ -376,7 +377,19 @@ export function createMeshEngine(opts = {}) {
       s.prediction = { label, confidence: null, source: "simulation", at: t,
         zone: label === "1" ? { label: ZONES[s.sim.zone], confidence: null } : null };
     } else if (s.model && pairsHeard >= CONFIG.minLinks) {
+      // Wi-Fi CSI sees MOVEMENT. If overall motion stays at the empty-room level,
+      // the room is empty or everyone is sitting very still, and a count would be a
+      // guess. Say so instead of inventing a number.
+      s.recentMotion.push(features[FEATURE_NAMES.indexOf("motion_mean")]);
+      if (s.recentMotion.length > 5) s.recentMotion.shift();
+      const quietAt = CONFIG.quietMotion || (s.levels ? s.levels.thresholds[0] : 0);
+      const motionAvg = s.recentMotion.reduce((a, b) => a + b, 0) / s.recentMotion.length;
       const { avg, best } = smoothed(s.recentProbs, predictProba(s.model, features));
+      // Low motion: trust the model only when it says "empty"; otherwise don't guess.
+      if (quietAt > 0 && s.recentMotion.length >= 3 && motionAvg < quietAt && s.model.classes[best] !== "0") {
+        s.prediction = { label: "quiet", confidence: null, zone: null, source: "model", quiet: true, motion: round(motionAvg, 1), at: t };
+        return;
+      }
       const label = s.model.classes[best];
       // A zone is only meaningful for one person: with 2+ people their signals overlap.
       let zone = null;

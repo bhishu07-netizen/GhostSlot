@@ -234,6 +234,7 @@ function SpaceDetail({ item, booking, csi, onShowInFind, onBook, you, geo }) {
           const on = Object.values(csi.nodes || {}).filter((n) => n.online).length;
           const p = csi.prediction;
           const txt = csi.mode === "simulation" ? "Wi-Fi mesh (simulation)"
+            : p && p.quiet ? "Wi-Fi: no movement"
             : p ? (/^\d+$/.test(p.label) ? `Wi-Fi: ${p.label === "0" ? "empty" : `${p.label} ${p.label === "1" ? "person" : "people"}`}` : p.label === "1+" ? "Wi-Fi: occupied" : p.label === "0" ? "Wi-Fi: empty" : `Wi-Fi: ${p.label}`)
             : on >= 2 ? `Wi-Fi mesh live · ${on}/4 boards` : "Wi-Fi boards offline";
           return <span style={{ color: "#CFC7EC" }}>· {txt}</span>;

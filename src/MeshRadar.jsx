@@ -102,7 +102,10 @@ export function MeshRadar({ mesh }) {
   const onlineCount = Object.values(mesh.nodes).filter((d) => d.online).length;
 
   let headline, sub;
-  if (pred) {
+  if (pred && pred.quiet) {
+    headline = "No movement";
+    sub = "Wi-Fi sees no motion: the room is empty or everyone is sitting very still. The door counter has the count.";
+  } else if (pred) {
     // Count model: the most likely count (exact number) + how sure it is.
     const top = pred.source === "model" && /^\d+$/.test(pred.label) ? Number(pred.label) : null;
     headline = top != null
