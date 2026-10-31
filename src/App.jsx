@@ -986,27 +986,11 @@ export default function GhostSlot() {
   // Demo Room CSI status — polled from the backend (server/csi.js). Never
   // generated client-side; if the backend is unreachable this simply stays
   // null and the UI shows "CSI status unavailable" rather than inventing a state.
-  const [csiStatus, setCsiStatus] = useState(null);
+  const csiStatus = null; // the retired 2-board CSI pair; the 4-board mesh below replaces it
   const [showCsiDevDashboard, setShowCsiDevDashboard] = useState(false);
   // People count from the 4-board CSI mesh (server/csimesh.js). Same rule: never invented here.
   const meshStatus = useMeshStatus();
   const doorStatus = useDoorStatus();
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await fetch("/api/csi/status");
-        if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json();
-        if (!cancelled) setCsiStatus(data);
-      } catch {
-        if (!cancelled) setCsiStatus(null);
-      }
-    }
-    poll();
-    const t = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, []);
 
   // Release the room when the booking's time is up (checked every tick, so a
   // phone that slept through the end time releases it as soon as it wakes).
@@ -1835,7 +1819,7 @@ export default function GhostSlot() {
           <CampusMap
             rooms={roomsWithStatus}
             booking={booking}
-            csi={csiStatus}
+            csi={meshStatus}
             onBook={role === "facilities" ? undefined : handleBook}
             onShowInFind={isStudent ? (room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, category: room.category, sortBy: p.sortBy })); } : undefined}
             you={you}

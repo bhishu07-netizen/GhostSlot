@@ -229,7 +229,15 @@ function SpaceDetail({ item, booking, csi, onShowInFind, onBook, you, geo }) {
       <div style={{ fontSize: 12.5, color: "#CFC7EC", lineHeight: 1.5 }}>{room.description}</div>
       <div style={{ fontSize: 11.5, color: "#A39CC4", display: "flex", alignItems: "center", gap: 6 }}>
         <SIcon size={13} color="#C4B5FD" /> Sensed by: {S.label}
-        {room.sensing === "csi" && csi && <span style={{ color: "#CFC7EC" }}>· {csi.state}{csi.mode === "simulation" ? " (simulation)" : ""}</span>}
+        {room.sensing === "csi" && csi && (() => {
+          // csi = 4-board mesh status: show the live people count or the board status
+          const on = Object.values(csi.nodes || {}).filter((n) => n.online).length;
+          const p = csi.prediction;
+          const txt = csi.mode === "simulation" ? "Wi-Fi mesh (simulation)"
+            : p ? (/^\d+$/.test(p.label) ? `Wi-Fi: ${p.label === "0" ? "empty" : `${p.label} ${p.label === "1" ? "person" : "people"}`}` : p.label === "1+" ? "Wi-Fi: occupied" : p.label === "0" ? "Wi-Fi: empty" : `Wi-Fi: ${p.label}`)
+            : on >= 2 ? `Wi-Fi mesh live · ${on}/4 boards` : "Wi-Fi boards offline";
+          return <span style={{ color: "#CFC7EC" }}>· {txt}</span>;
+        })()}
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {room.bookable && onBook && (
