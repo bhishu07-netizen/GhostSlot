@@ -15,6 +15,30 @@ const PACKET_DT = P.WINDOW_S / P.PACKETS_PER_WINDOW;
 const ENV = { noise: 0.13, agc: 0.08 };
 const TONE = { good: C.good, warn: C.warn, bad: C.bad, muted: C.muted };
 
+// ---- voiceover: the browser's own text-to-speech (no network, no files) ----
+const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+function pickVoice() {
+  if (!canSpeak) return null;
+  const vs = window.speechSynthesis.getVoices();
+  const en = vs.filter((v) => /^en[-_]/i.test(v.lang));
+  const pref = [/en[-_]IN/i, /Google UK English/i, /Daniel|Samantha|Karen|Moira|Serena|Aria|Jenny|Guy/i, /Google US English/i];
+  for (const re of pref) { const v = en.find((x) => re.test(x.lang) || re.test(x.name)); if (v) return v; }
+  return en[0] || vs[0] || null;
+}
+function speak(text, enabled) {
+  if (!canSpeak || !enabled || !text) return Promise.resolve();
+  return new Promise((resolve) => {
+    const u = new window.SpeechSynthesisUtterance(text);
+    const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = 1.0; u.pitch = 1.0; u.volume = 1;
+    const done = () => { clearTimeout(guard); resolve(); };
+    const guard = setTimeout(resolve, 2500 + text.length * 90); // never hang the story if speech stalls
+    u.onend = done; u.onerror = done;
+    window.speechSynthesis.speak(u);
+  });
+}
+const hush = () => { if (canSpeak) window.speechSynthesis.cancel(); };
+
 const btn = (on = false, tone) => ({
   background: on ? "rgba(167,139,250,0.22)" : "rgba(18,15,30,0.8)", color: on ? "#F1ECFF" : "#D2C8F5",
   border: `1px solid ${on ? "rgba(167,139,250,0.6)" : tone || "rgba(196,181,253,0.2)"}`, borderRadius: 10,
@@ -51,6 +75,10 @@ export default function Lab3D() {
   const [speed, setSpeed] = useState(1);
   const [story, setStory] = useState(null); // { step, caption, total }
   const [autoRotate, setAutoRotate] = useState(true);
+  const [voice, setVoiceRaw] = useState(() => { try { return localStorage.getItem("gs.lab3d.voice") !== "0"; } catch { return true; } });
+  const voiceRef = useRef(voice); voiceRef.current = voice;
+  const setVoice = (v) => { setVoiceRaw(v); try { localStorage.setItem("gs.lab3d.voice", v ? "1" : "0"); } catch { /* ignore */ } if (!v) hush(); };
+  useEffect(() => { if (canSpeak) { window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } return hush; }, []);
 
   const refs = useRef({});
   Object.assign(refs.current, { model, baseline, speed, selected, blind, feel, highlight, fresnelPair, showFresnel, autoRotate, nodesOn });
@@ -191,30 +219,47 @@ export default function Lab3D() {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const until = async (cond, maxMs) => { const t0 = performance.now(); while (alive() && !cond() && performance.now() - t0 < maxMs) await wait(200); };
     const cam = (v, d) => sceneRef.current?.flyTo(v, d);
-    const step = (i, caption, sub) => alive() && setStory({ step: i, total: 8, caption, sub });
+    // Each step shows a caption and speaks its narration; the story waits for both the
+    // minimum time on screen and the end of the narration before moving on.
+    let spoken = Promise.resolve();
+    const step = (i, caption, sub, say) => {
+      if (!alive()) return;
+      setStory({ step: i, total: 8, caption, sub });
+      hush(); spoken = speak(say, voiceRef.current);
+    };
+    const hold = async (ms) => { await Promise.all([wait(ms), spoken]); };
     setAutoRotate(false); setShowFresnel(false); setSpeed(2); resetRoom(); setNodesOn([true, true, true, true]);
-    step(1, "A normal classroom. Four ESP32-S3 boards in the corners.", "They talk to each other over Wi-Fi: 12 links, many times a second. No cameras anywhere.");
-    cam("boards", 2.2); await wait(5500); if (!alive()) return;
-    step(2, "At the door: two infrared beams.", "Break A, then B = someone came IN. Break B, then A = someone went OUT. Half a step in and back = ignored.");
-    cam("door", 2); tenSevenThree(); await wait(6500); if (!alive()) return;
-    step(3, "Just inside: the door QR.", "Most people scan it to check in. Some don't bother.");
-    cam("qr", 1.8); await until(() => sim.current.qr >= 2, 9000); await wait(1500); if (!alive()) return;
-    step(4, "Ten people walk in. Seven scan. Three don't.", "Green = checked in · amber = not checked in.");
-    cam("seats", 2.2); await until(() => sim.current.agents.filter((a) => a.seated).length >= 10, 40000); await wait(800); if (!alive()) return;
-    step(5, "Wi-Fi: every body bends the signals between the boards.", "The model only reads how the 12 links change. It estimates how many people are inside.");
-    setFeel(true); cam("iso", 2.2); await wait(7000); if (!alive()) return;
+    step(1, "A normal classroom. Four ESP32-S3 boards in the corners.", "They talk to each other over Wi-Fi: 12 links, many times a second. No cameras anywhere.",
+      "This is a normal classroom. Four small E S P thirty-two boards sit in the corners. They talk to each other over Wi-Fi, twelve links, many times a second. There is no camera anywhere.");
+    cam("boards", 2.2); await hold(5500); if (!alive()) return;
+    step(2, "At the door: two infrared beams.", "Break A, then B = someone came IN. Break B, then A = someone went OUT. Half a step in and back = ignored.",
+      "At the door, two infrared beams. If beam A breaks before beam B, someone walked in. B before A means someone walked out. Half a step in and back is ignored.");
+    cam("door", 2); tenSevenThree(); await hold(6500); if (!alive()) return;
+    step(3, "Just inside: the door QR.", "Most people scan it to check in. Some don't bother.",
+      "Just inside, the door Q R code. Most people scan it to check in. Some don't bother.");
+    cam("qr", 1.8); await until(() => sim.current.qr >= 2, 9000); await hold(1500); if (!alive()) return;
+    step(4, "Ten people walk in. Seven scan. Three don't.", "Green = checked in · amber = not checked in.",
+      "Ten people walk in. Seven of them scan. Three don't. Green means checked in. Amber means not checked in.");
+    cam("seats", 2.2); await until(() => sim.current.agents.filter((a) => a.seated).length >= 10, 40000); await hold(800); if (!alive()) return;
+    step(5, "Wi-Fi: every body bends the signals between the boards.", "The model only reads how the 12 links change. It estimates how many people are inside.",
+      "Now the Wi-Fi. Every human body bends the signals travelling between the boards. Our model only reads how those twelve links change, and from that it estimates how many people are inside.");
+    setFeel(true); cam("iso", 2.2); await hold(7000); if (!alive()) return;
     const unscanned = sim.current.agents.filter((a) => !a.checkedIn).map((a) => a.id);
     const w = Math.round(sim.current.recent.length ? sim.current.recent.reduce((a, x) => a + x, 0) / sim.current.recent.length : 0);
-    step(6, `Door counter 10 · QR 7 · Wi-Fi ≈${w}`, "→ 3 people are in this room without checking in. GhostSlot still shows the room as occupied and tells staff the real count.");
-    setHighlight(unscanned); setFeel(false); cam("wide", 2); await wait(8000); if (!alive()) return;
-    step(7, "Proof it's Wi-Fi: hide the people.", "The estimate keeps working. It never sees the people, only the signals.");
-    setHighlight([]); setBlind(true); await wait(7500); if (!alive()) return;
-    step(8, "And Wi-Fi grades itself every day.", "Whenever the door count and check-ins agree, that's free ground truth. Every room gets an accuracy score, and an empty room at night re-calibrates it.");
-    setBlind(false); cam("iso", 2); await wait(8000); if (!alive()) return;
+    step(6, `Door counter 10 · QR 7 · Wi-Fi ≈${w}`, "→ 3 people are in this room without checking in. GhostSlot still shows the room as occupied and tells staff the real count.",
+      `The door counter says ten. Q R check-ins say seven. Wi-Fi says about ${w}. So three people are in this room without checking in. GhostSlot still shows the room as occupied, and tells the staff the real count.`);
+    setHighlight(unscanned); setFeel(false); cam("wide", 2); await hold(8000); if (!alive()) return;
+    step(7, "Proof it's Wi-Fi: hide the people.", "The estimate keeps working. It never sees the people, only the signals.",
+      "How do we know it's really the Wi-Fi? Let's hide the people. The estimate keeps working, because it never sees the people. Only the signals.");
+    setHighlight([]); setBlind(true); await hold(7500); if (!alive()) return;
+    step(8, "And Wi-Fi grades itself every day.", "Whenever the door count and check-ins agree, that's free ground truth. Every room gets an accuracy score, and an empty room at night re-calibrates it.",
+      "And the Wi-Fi grades itself every day. Whenever the door count and the check-ins agree, that is free ground truth. Every room gets its own accuracy score, and the empty room at night re-calibrates it.");
+    setBlind(false); cam("iso", 2); await hold(8000); if (!alive()) return;
     setStory({ step: 9, total: 8, caption: "QR tells us who. IR tells us how many, and which way. Wi-Fi proves it independently.", sub: "Find space, don't waste space. That's GhostSlot.", done: true });
+    hush(); speak("Q R tells us who. The door counter tells us how many, and which way. Wi-Fi proves it independently. Find space, don't waste space. That's GhostSlot.", voiceRef.current);
     setSpeed(1); setAutoRotate(true);
   };
-  const stopStory = () => { storyRun.current++; setStory(null); setSpeed(1); setBlind(false); setFeel(false); setHighlight([]); };
+  const stopStory = () => { storyRun.current++; hush(); setStory(null); setSpeed(1); setBlind(false); setFeel(false); setHighlight([]); };
 
   // ---- derived numbers ----
   const actual = ui.agents.filter((a) => a.y > 0.02 && a.state !== "waiting").length;
@@ -253,6 +298,7 @@ export default function Lab3D() {
           <div style={{ display: "flex", gap: 6, pointerEvents: "auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
             {!story && <button className="l3-btn" style={{ ...primary, padding: "10px 16px", fontSize: 14 }} onClick={playStory} disabled={!!train}>{train ? `Calibrating Wi-Fi… ${train.pct}%` : "▶ Play the story"}</button>}
             {story && <button className="l3-btn" style={btn()} onClick={stopStory}>■ Stop story</button>}
+            {canSpeak && <button className="l3-btn" style={btn(voice)} aria-pressed={voice} onClick={() => setVoice(!voice)} title="Voiceover">{voice ? "🔊 Voice on" : "🔇 Voice off"}</button>}
             <a href="/" className="l3-btn" style={{ ...btn(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}>← App</a>
           </div>
         </div>
