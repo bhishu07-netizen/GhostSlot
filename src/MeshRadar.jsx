@@ -94,7 +94,7 @@ export function MeshRadar({ mesh }) {
   const lines = pairLines(mesh.links);
   const maxMotion = Math.max(10, ...lines.map((l) => l.motion));
   const hasEstimate = pred && typeof pred.estimate === "number";
-  const n = pred ? (hasEstimate ? Math.round(pred.estimate) : pred.label === "5+" ? 5 : pred.label === "2+" ? 2 : pred.label === "1+" ? 1 : Number(pred.label) || 0) : 0;
+  const n = pred ? (/^\d+$/.test(pred.label) ? Number(pred.label) : hasEstimate ? Math.round(pred.estimate) : pred.label === "5+" ? 5 : pred.label === "2+" ? 2 : pred.label === "1+" ? 1 : 0) : 0;
   const isLevels = pred?.source === "levels";
   const zone = pred?.zone && ZONE_SHAPES[pred.zone.label] ? pred.zone : null;
   // With a zone (one person), the dot sits in that zone. Otherwise dots only show the count.
@@ -103,14 +103,16 @@ export function MeshRadar({ mesh }) {
 
   let headline, sub;
   if (pred) {
-    headline = hasEstimate
+    // Count model: the most likely count (exact number) + how sure it is.
+    const top = pred.source === "model" && /^\d+$/.test(pred.label) ? Number(pred.label) : null;
+    headline = top != null
+      ? (top === 0 ? "Empty" : `${top} ${top === 1 ? "person" : "people"}`)
+      : hasEstimate
       ? (n === 0 ? "Empty" : `≈${n} ${n === 1 ? "person" : "people"}`)
       : pred.label === "0" ? (isLevels ? "Empty" : "0 people") : pred.label === "1+" ? "Occupied" : pred.label === "1" ? "1 person" : `${pred.label} people`;
     sub = sim ? "simulated count" : isLevels
       ? `${Math.round((pred.confidence ?? 0) * 100)}% steady · calibrated levels (≈20 s average)`
-      : hasEstimate && Array.isArray(pred.range) && pred.range[0] !== pred.range[1]
-        ? `likely ${pred.range[0]}–${pred.range[1]} · model`
-        : `${Math.round((pred.confidence ?? 0) * 100)}% sure · model`;
+      : `${Math.round((pred.confidence ?? 0) * 100)}% sure${Array.isArray(pred.range) && pred.range[0] !== pred.range[1] ? ` · could be ${pred.range[0]}–${pred.range[1]}` : ""} · model`;
     if (zone) sub += ` · ${pred.label === "1+" ? "movement near " : ""}${zone.label} zone${zone.confidence != null ? ` (${Math.round(zone.confidence * 100)}%)` : ""}`;
   } else if (!mesh.model.loaded) {
     headline = "Not trained yet";
