@@ -105,6 +105,8 @@ def main():
     sub.add_parser("stop")
     e = sub.add_parser("export"); e.add_argument("--out", default="mesh-recordings.csv")
     sub.add_parser("clear")
+    d = sub.add_parser("door-reset", help="set the IR door counter (default 0 people inside)"); d.add_argument("--inside", type=int, default=0)
+    sub.add_parser("door")
     args = ap.parse_args()
 
     if args.cmd == "status":
@@ -114,6 +116,15 @@ def main():
     elif args.cmd == "stop":
         call(args.server, "/api/csi/mesh/record", "POST", {"label": None})
         print("Recording stopped.")
+    elif args.cmd == "door-reset":
+        st = call(args.server, "/api/door/reset", "POST", {"inside": args.inside})["status"]
+        print(f"Door counter set: {st['inside']} inside")
+    elif args.cmd == "door":
+        st = call(args.server, "/api/door/status", admin=False)
+        beams = st["beams"]
+        print(f"door board : {'ONLINE' if st['online'] else 'OFFLINE'}")
+        print(f"beams      : A {'CUT' if beams['a'] else 'clear'} · B {'CUT' if beams['b'] else 'clear'}")
+        print(f"count      : {st['inside']} inside ({st['entries']} in, {st['exits']} out)")
     elif args.cmd == "clear":
         if input("Delete ALL recordings on the server? Type yes: ").strip().lower() == "yes":
             call(args.server, "/api/csi/mesh/clear", "POST", {})

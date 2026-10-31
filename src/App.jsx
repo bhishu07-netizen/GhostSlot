@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { MeshRadar, MeshDevRows, useMeshStatus } from "./MeshRadar.jsx";
+import { DoorCounter, useDoorStatus } from "./DoorCounter.jsx";
 import Papa from "papaparse";
 import {
   MapPin, Clock, Users, TrendingUp, Bell, Plug, Volume1,
@@ -490,7 +491,7 @@ function DemoRoomCsiBadge({ mesh, onOpenDevDashboard }) {
   );
 }
 
-function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, onOpenDevDashboard, hereCount = 0, showQr = true }) {
+function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, door, onOpenDevDashboard, hereCount = 0, showQr = true }) {
   const vm = vibeMeta[room.vibe];
   const VibeIcon = vm.icon;
   const meta = statusMeta(room, status, prefs, booking);
@@ -536,6 +537,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
       {qrOpen && <Suspense fallback={null}><CheckInQr roomId={room.id} roomName={room.name} onClose={() => setQrOpen(false)} /></Suspense>}
 
       {room.csiEnabled && <MeshRadar mesh={mesh} />}
+      {room.csiEnabled && <DoorCounter door={door} mesh={mesh} checkedIn={hereCount} />}
       {room.csiEnabled && (
         <a href="/lab" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textDecoration: "none", background: "linear-gradient(180deg, rgba(167,139,250,0.12), rgba(167,139,250,0.04))", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 14, padding: "10px 12px", color: "#F4F1FF" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -988,6 +990,7 @@ export default function GhostSlot() {
   const [showCsiDevDashboard, setShowCsiDevDashboard] = useState(false);
   // People count from the 4-board CSI mesh (server/csimesh.js). Same rule: never invented here.
   const meshStatus = useMeshStatus();
+  const doorStatus = useDoorStatus();
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -1819,7 +1822,7 @@ export default function GhostSlot() {
             <div className="gs-room-grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
               {restOfList.map(({ room, status, score }) => (
-                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} hereCount={checkins.counts[room.id] || 0} />
+                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} door={room.csiEnabled ? doorStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} hereCount={checkins.counts[room.id] || 0} />
               ))}
             </div>
           )}

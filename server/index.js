@@ -112,6 +112,12 @@ app.use("/api/csi", statusLimiter);
 app.use("/api", csiRouter);
 // Mesh CSI (people count from 4 boards + a trained model). Same key rules.
 app.use("/api", meshRouter);
+// IR door counter (two beams at the door, direction from the order they break).
+const { createDoorCounter, buildDoorRouter } = await import("./door.js");
+const { requireDeviceKey, requireAdminKey } = await import("./csi.js");
+const doorLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: "draft-8", legacyHeaders: false });
+app.use("/api/door", doorLimiter);
+app.use("/api", buildDoorRouter(createDoorCounter(), { requireDeviceKey, requireAdminKey }));
 
 // Campus Twin (utilisation, energy waste, water anomalies). Signed-in users only.
 const { buildTwin } = await import("./twin.js");

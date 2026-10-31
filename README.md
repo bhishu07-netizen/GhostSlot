@@ -275,6 +275,15 @@ predicts **0 / 1 / 2 / 3 / 4 / 5+ people** live. With exactly one person inside 
 
 ---
 
+## Demo Room: IR door counter (new in 0.8)
+
+Two IR sensors on the door frame (`hardware/gs_door_counter`): beam A outside, beam B inside.
+**A → A+B → B = in, B → A+B → A = out**, anything else is ignored, a beam blocked for more than 4 s resets.
+The board posts each event to `POST /api/door/event` and a 1 s heartbeat with the live beams
+(`/api/door/heartbeat`, device key). The Demo Room card shows the live count next to QR check-ins
+and the Wi-Fi count, and says when they disagree (people inside without checking in, tailgating,
+ghost bookings). Counts only, kept in memory. Reset with `python3 tools/mesh/mesh_record.py door-reset`.
+
 ## Demo Room: Wi-Fi CSI sensing
 
 Two ESP32-S3 boards act as a CSI transmitter/receiver pair. The backend
