@@ -470,29 +470,21 @@ function statusMeta(room, status, prefs, booking) {
   return { tone: "lime", label: `free for ${fmtMin(status.freeFor)}` };
 }
 
-function DemoRoomCsiBadge({ csi, onOpenDevDashboard }) {
-  if (!csi) {
-    return (
-      <div style={{ marginTop: 2, fontSize: 11, color: "#857DA8" }}>⚪ CSI status unavailable — backend not reachable</div>
-    );
-  }
-  const m = CSI_STATE_META[csi.state] || CSI_STATE_META.UNKNOWN;
+function DemoRoomCsiBadge({ mesh, onOpenDevDashboard }) {
+  // Status of the 4-board ESP32-S3 mesh (the old 2-board CSI pair is retired).
+  if (!mesh) return <div style={{ marginTop: 2, fontSize: 11.5, color: "#857DA8" }}>⚪ Wi-Fi mesh status unavailable</div>;
+  const nodes = Object.values(mesh.nodes || {});
+  const online = nodes.filter((n) => n.online).length;
+  const sim = mesh.mode === "simulation";
+  const live = !sim && online >= 2;
   return (
-    <div style={{ marginTop: 2, display: "flex", flexDirection: "column", gap: 4, background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 10, padding: "8px 10px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 700 }}>{m.dot} {m.label}</span>
-        {csi.mode === "simulation" && <Pill tone="amber">⚠ simulation mode</Pill>}
-      </div>
-      <div style={{ fontSize: 11, color: "#A39CC4" }}>
-        Wi-Fi sensing: {csi.state === "OFFLINE" ? "unreachable" : "active"} · last update: {csi.secondsSinceUpdate == null ? "never" : `${csi.secondsSinceUpdate}s ago`}
-      </div>
-      {csi.state === "CHANGE_DETECTED" && (
-        <div style={{ fontSize: 10.5, color: "#D9B26A" }}>A significant Wi-Fi channel change was detected — this is not a confirmed occupancy count.</div>
-      )}
+    <div style={{ marginTop: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 10, padding: "8px 10px" }}>
+      <span style={{ fontSize: 12, fontWeight: 700 }}>
+        {sim ? "🟡 Wi-Fi mesh · simulation" : live ? "🟢 Wi-Fi mesh live" : "🔴 Wi-Fi boards offline"}
+        <span style={{ fontWeight: 500, color: "#A39CC4" }}> · {online}/{nodes.length || 4} boards · {mesh.pairsHeard ?? 0}/6 pairs</span>
+      </span>
       {onOpenDevDashboard && (
-        <button onClick={onOpenDevDashboard} style={{ alignSelf: "flex-start", marginTop: 2, background: "none", border: "1px solid rgba(196,181,253,0.12)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "#A39CC4", cursor: "pointer" }}>
-          🛠 Developer view
-        </button>
+        <button onClick={onOpenDevDashboard} style={{ background: "none", border: "1px solid rgba(196,181,253,0.12)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "#A39CC4", cursor: "pointer" }}>🛠 Developer view</button>
       )}
     </div>
   );
@@ -553,7 +545,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
           <ChevronRight size={18} color="#C4B5FD" style={{ flexShrink: 0 }} />
         </a>
       )}
-      {room.csiEnabled && <DemoRoomCsiBadge csi={csi} onOpenDevDashboard={onOpenDevDashboard} />}
+      {room.csiEnabled && <DemoRoomCsiBadge mesh={mesh} onOpenDevDashboard={onOpenDevDashboard} />}
 
       {!room.bookable ? (
         <div style={{ marginTop: 4, background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#A39CC4", textAlign: "center" }}>
@@ -699,37 +691,14 @@ function CsiDevDashboard({ csi, mesh, onClose }) {
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#100D1B", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
         <div style={{ padding: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>🛠 Demo Room — CSI Dev Dashboard</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>🛠 Demo Room — Wi-Fi mesh (developer view)</div>
             <button onClick={onClose} style={{ background: "none", border: "none", color: "#A39CC4", cursor: "pointer" }}><X size={18} /></button>
           </div>
-          {!csi ? (
-            <div style={{ fontSize: 12.5, color: "#FF8B8B" }}>Backend unreachable — no CSI status available.</div>
-          ) : (
-            <>
-              {csi.mode === "simulation" && (
-                <div style={{ marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: "#07060C", background: "#E9E3FF", borderRadius: 10, padding: "6px 10px" }}>⚠ SIMULATION MODE — values are synthetic, not real CSI</div>
-              )}
-              {row("Mode", csi.mode)}
-              {row("CSI state", csi.state)}
-              {row("Calibration", csi.calibrationStatus)}
-              {row("Baseline mean / std", csi.baseline ? `${csi.baseline.mean} / ${csi.baseline.std}` : "—")}
-              {row("Samples collected", csi.samplesCollected)}
-              {row("Last update", csi.secondsSinceUpdate == null ? "never" : `${csi.secondsSinceUpdate}s ago`)}
-              {row("Node A (ESP32-S3 #1)", csi.devices["node-a"].online ? "ONLINE" : "OFFLINE")}
-              {row("Node B (ESP32-S3 #2)", csi.devices["node-b"].online ? "ONLINE" : "OFFLINE")}
-              {row("OLED display", csi.devices.oled.online ? "ONLINE" : "OFFLINE")}
-              {row("Sample rate", `${csi.config.sampleRateMs} ms`)}
-              {row("Baseline window", `${csi.config.baselineWindow} samples`)}
-              {row("Smoothing window", `${csi.config.smoothingWindow} samples`)}
-              {row("Change threshold", `${csi.config.changeThreshold}σ`)}
-              {row("Offline timeout", `${csi.config.offlineTimeoutMs} ms`)}
-              <div style={{ marginTop: 14, marginBottom: 4, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "#A39CC4", fontWeight: 700 }}>People-count mesh</div>
-              <MeshDevRows mesh={mesh} row={row} />
-              <div style={{ marginTop: 10, fontSize: 11, color: "#857DA8", lineHeight: 1.5 }}>
-                CHANGE_DETECTED means the room's Wi-Fi channel deviated from its calibrated baseline beyond the threshold above — it is a signal-level detection, not a validated occupancy or people count.
-              </div>
-            </>
-          )}
+          <div style={{ marginBottom: 4, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "#A39CC4", fontWeight: 700 }}>People-count mesh (4 × ESP32-S3)</div>
+          <MeshDevRows mesh={mesh} row={row} />
+          <div style={{ marginTop: 10, fontSize: 11, color: "#857DA8", lineHeight: 1.5 }}>
+            The count comes from a model calibrated in this room on labelled recordings; its held-out accuracy is shown on the radar.
+          </div>
         </div>
       </div>
     </>
