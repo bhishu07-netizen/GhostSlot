@@ -13,9 +13,11 @@ export const SCANNER = { x: 4.05, y: 0.12, stand: { x: 4.05, y: 0.62 } }; // doo
 export const OUTSIDE_SPAWN = { x: 3, y: -2.2 };
 const SPEED = 1.15; // m/s walking
 
-// 10 seats: two rows of desks.
+// 10 seats: two rows of desks, students face the whiteboard on the back wall.
+// A seat sits on the door side of its desk (desk centre = seat.y + 0.5).
+export const DESK_ROWS = [2.6, 4.3];
 export const SEATS = [];
-for (const row of [2.6, 4.3]) for (const x of [0.9, 2.0, 3.0, 4.0, 5.1]) SEATS.push({ x, y: row + 0.45 });
+for (const row of DESK_ROWS) for (const x of [0.9, 2.0, 3.0, 4.0, 5.1]) SEATS.push({ x, y: row - 0.45, row });
 
 const NAMES = ["Aarav", "Diya", "Kabir", "Meher", "Ishaan", "Riya", "Vihaan", "Anaya", "Arjun", "Sara", "Neel", "Tara"];
 const SHIRTS = [0x8b5cf6, 0x3ddc97, 0xf5b544, 0x5b9bea, 0xff6b6b, 0xe879f9, 0x22d3ee, 0xa3e635, 0xfb923c, 0xf472b6, 0x94a3b8, 0x60a5fa];
@@ -42,12 +44,20 @@ function route(a, phase) {
   }
   if (phase === "scan") return [SCANNER.stand];
   if (phase === "seat") {
-    const s = a.seat || { x: 1 + Math.random() * 4, y: 2.2 + Math.random() * 3 };
-    // walk around the desks along the aisle in front of them
-    return [{ x: s.x, y: Math.min(s.y - 0.55, 2.0) }, { x: s.x, y: s.y }];
+    const s = a.seat;
+    if (!s) return [{ x: 1 + Math.random() * 4, y: 1.4 + Math.random() * 0.5 }];
+    if (s.row === DESK_ROWS[0]) return [{ x: s.x, y: 1.6 }, { x: s.x, y: s.y }];
+    // back row: round the first row of desks along the side aisle
+    const ax = s.x >= 3 ? 5.72 : 0.3, gap = (DESK_ROWS[0] + DESK_ROWS[1]) / 2 - 0.2;
+    return [{ x: ax, y: 1.6 }, { x: ax, y: gap }, { x: s.x, y: gap }, { x: s.x, y: s.y }];
   }
   if (phase === "leave") {
-    return [{ x: a.x, y: Math.min(a.y - 0.6, 2.0) }, { x: DOOR.x, y: 0.75 }, { x: DOOR.x, y: -0.6 }, { x: OUTSIDE_SPAWN.x, y: OUTSIDE_SPAWN.y }];
+    const s = a.seat, out = [{ x: DOOR.x, y: 0.75 }, { x: DOOR.x, y: -0.6 }, { x: OUTSIDE_SPAWN.x, y: OUTSIDE_SPAWN.y }];
+    if (a.seated && s && s.row === DESK_ROWS[1]) {
+      const ax = s.x >= 3 ? 5.72 : 0.3, gap = (DESK_ROWS[0] + DESK_ROWS[1]) / 2 - 0.2;
+      return [{ x: s.x, y: gap }, { x: ax, y: gap }, { x: ax, y: 1.6 }, ...out];
+    }
+    return [{ x: a.x, y: Math.min(a.y, 1.6) }, ...out];
   }
   if (phase === "back") return [{ x: DOOR.x, y: -0.6 }, { x: OUTSIDE_SPAWN.x, y: OUTSIDE_SPAWN.y }];
   return [];
@@ -92,7 +102,7 @@ export function stepAgent(a, dt, hooks) {
       if (a.scans) { a.state = "toScanner"; a.path = route(a, "scan"); }
       else { a.state = "toSeat"; a.path = route(a, "seat"); }
     } else if (a.state === "toScanner") { a.state = "scanning"; a.scanT = 1.4; a.heading = -Math.PI / 2; }
-    else if (a.state === "toSeat") { a.state = a.seat ? "seated" : "idle"; a.seated = !!a.seat; a.heading = -Math.PI / 2; }
+    else if (a.state === "toSeat") { a.state = a.seat ? "seated" : "idle"; a.seated = !!a.seat; a.heading = Math.PI / 2; }
     else if (a.state === "leaving" || a.state === "turningBack") {
       if (a.checkedIn) { a.checkedIn = false; hooks.onCheckOut?.(a); }
       a.state = "gone";
@@ -108,7 +118,7 @@ export function stepAgent(a, dt, hooks) {
 
 export function moveAgentTo(a, x, y) {
   if (a.state === "gone" || a.state === "waiting") return;
-  x = Math.max(0.35, Math.min(ROOM_W - 0.35, x)); y = Math.max(0.5, Math.min(ROOM_D - 0.35, y));
+  x = Math.max(0.35, Math.min(ROOM_W - 0.35, x)); y = Math.max(0.5, Math.min(ROOM_D - 0.6, y));
   a.seated = false; a.seat = null;
   a.state = "toSeat";
   a.path = [{ x, y }];
