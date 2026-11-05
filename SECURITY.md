@@ -24,8 +24,6 @@ and how it's tested (`npm test`, 24 tests).
 
 **A01 Broken access control**
 - Real server-side accounts. AI endpoints require a signed-in session.
-- CSI device writes need `X-Device-Key`; admin endpoints need `X-Admin-Key`, and are **off** if no key is set (fail closed).
-- The OLED can only mark itself online with the device key.
 
 **A02 Cryptographic failures**
 - Passwords: **scrypt** (N=2¹⁶, r=8, p=2, 16-byte random salt), the OWASP-recommended parameters. Verification is constant-time.
@@ -64,15 +62,11 @@ and how it's tested (`npm test`, 24 tests).
 **A09 Logging & monitoring**
 - Server errors are logged without passwords, tokens, dates of birth or prompts. The Gemini key is sent in a header, not the URL.
 
-**Campus Twin (0.4)**
-- `/api/twin/*` is for signed-in users only and rate-limited (60 requests/min per IP). The alert-ack endpoint also needs our own `Origin`, and validates the alert key against a strict pattern and the status against an allow-list.
-- Twin tables have RLS on with no policies, `anon`/`authenticated` have no grants, and `EXECUTE` on every twin function is revoked from them, so the public Supabase API can't read or run any of it. Only the server's service-role key can.
-- **Roles** (student / faculty / facilities) are stored on the account and checked on the server. Only facilities staff can log readings or acknowledge/resolve alerts (403 otherwise). Facilities self sign-up needs `FACILITIES_ACCESS_CODE` (compared in constant time) and is closed when it isn't set. Login must match the picked role, with the same generic error either way. Each role gets its own set of screens; `GET /api/twin/me` (a staff member's own work log) is facilities-only and filters to the caller's own rows twice (in the query and again in code).
+**Accounts and roles (0.9: timetable-only)**
+- Since 0.9 GhostSlot only shows empty rooms from the timetable. The Wi-Fi sensing, door counter, check-in and Campus Twin endpoints were removed, so there are no device keys or sensor write endpoints left to attack.
+- **Roles** (student / faculty) are stored on the account and checked on the server. Login must match the picked role, with the same generic error either way. Accounts of the retired facilities role can't log in, and their old sessions are refused.
 - **Guardian consent:** the consent code is 256-bit random, only its SHA-256 is stored, it travels after `#` (not sent to the server in the URL or logged), lookups/approvals are rate-limited (30 per 15 min per IP), and the guardian can't use the student's own name. A database CHECK makes it impossible to store an under-18 account that isn't a student with recorded consent. A minor age token can't create a staff account. Pending requests expire after 48 h and are purged hourly.
-- Logged readings are range-checked against the room's rated load and capacity, snapped to the current 15-minute slot, rate-limited (30 per staff member per 10 min) and attributed (`logged_by`).
 - The shared demo accounts can't be deleted or use *Sign out everywhere*, so one visitor can't lock other judges out.
-- Every twin function has a pinned `search_path` (Supabase security advisor clean apart from the intended "RLS with no policies" notice).
-- The ₹ figures use an assumed tariff and the data is labelled simulated in the API (`dataSource`) and the UI.
 
 **A10 SSRF**
 - The server only calls fixed hosts: Google's Gemini API and your own Supabase project URL from the environment. The model name is URL-encoded, and no user-supplied URLs are ever fetched.

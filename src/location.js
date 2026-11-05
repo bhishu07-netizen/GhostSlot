@@ -12,7 +12,7 @@
 // factor. MAP_METERS_PER_UNIT in campus.js sets the scale; correct it once the
 // map is drawn to scale.
 // ─────────────────────────────────────────────────────────────────────────────
-import { MAP_ZONES, CAMPUS_SPACES, ROOM_POSITIONS, GEO_ANCHORS, MAP_METERS_PER_UNIT } from "./campus";
+import { MAP_ZONES, ROOM_POSITIONS, GEO_ANCHORS, MAP_METERS_PER_UNIT } from "./campus";
 
 const WALK_M_PER_MIN = 75;   // relaxed student pace
 const ROUTE_FACTOR = 1.3;    // paths aren't straight lines
@@ -182,10 +182,10 @@ export function directionsUrl(geo) {
   return `https://www.google.com/maps/dir/?api=1&destination=${geo.lat.toFixed(6)},${geo.lng.toFixed(6)}&travelmode=walking`;
 }
 
-// Link printed on a room's door QR code.
+// Link that opens GhostSlot with your spot set to a room (/?at=<room id>).
 export function doorLink(origin, id) {
   return `${origin.replace(/\/+$/, "")}/?at=${encodeURIComponent(id)}`;
 }
 
 // Re-exported so callers don't need two imports.
-export { ROOM_POSITIONS, CAMPUS_SPACES };
+export { ROOM_POSITIONS };

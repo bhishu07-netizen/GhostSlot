@@ -1,14 +1,29 @@
 # GhostSlot
 
-AI-powered Campus Space Intelligence System. Team COGNIX, Chandigarh University.
+Find an empty classroom on campus, straight from the timetable. Team COGNIX, Chandigarh University.
 
-Version 0.4 adds the **Campus Digital Twin** (DataVerse X, PS #3): live room
-state, classroom utilisation heatmap, energy-waste detection with ₹ estimates,
-water-leak anomaly detection, alerts facilities can acknowledge, and room
-reallocation suggestions. All of it is computed in **Supabase Postgres**.
-Earlier versions added the SkillTwin silver-on-black look, a server-checked
-18+ age gate and a full security pass. See [SECURITY.md](SECURITY.md) and
-[COMPLIANCE.md](COMPLIANCE.md).
+GhostSlot does one job: it shows which classrooms, labs, lecture halls and library pods are
+**empty right now** (no class timetabled, nobody has booked it), how long they stay empty,
+and lets you book one. That's it. No Wi-Fi sensing, no cameras, no crowd monitoring.
+
+**Who it's for**
+
+| Login | What they get |
+|---|---|
+| Student | Free rooms ranked for what they need, the campus map with directions, their own timetable (so it knows when they're free), booking, AI search |
+| Faculty | Their teaching day, free rooms for an extra class, booking, map, AI search |
+
+**What's in the app**
+
+- **Find:** every room with its status from the timetable: free for how long, or busy until when.
+  Filters for duration, block, seats, charging, AC, quiet. "Only my free time" uses your own timetable.
+- **AI search:** type it the way you'd say it ("quiet room near CSE for 90 minutes with charging").
+  Uses Gemini when a key is set, otherwise a built-in parser.
+- **Map:** the rooms on the campus map, green when free, with walking time and directions from where you are.
+- **Booking:** lock a free room for your time. It frees itself when the time is up, or tap "I'm out".
+- **Timetable:** add your classes (or import a CSV), and the room timetables (manually or CSV).
+
+See [SECURITY.md](SECURITY.md) and [COMPLIANCE.md](COMPLIANCE.md).
 
 ---
 
@@ -33,8 +48,7 @@ You need **Node.js 20 or newer** (`node -v` to check).
    ```
 5. Open **http://localhost:5173**
 
-**Demo logins** (shown on the login screen): student `23BCS10432`, faculty `E21045`, facilities
-`FMS2041`, all with password `Ghost-Demo-2026` (change it with `DEMO_PASSWORD`; it's public on purpose
+**Demo logins** (shown on the login screen): student `23BCS10432` and faculty `E21045`, both with password `Ghost-Demo-2026` (change it with `DEMO_PASSWORD`; it's public on purpose
 so judges can get in).
 
 > Login now really needs the backend. If you only run `npm run dev`, the
@@ -46,7 +60,7 @@ so judges can get in).
 |---|---|
 | `npm run setup` | Installs frontend + backend packages |
 | `npm run dev:all` | Runs backend (port 8787) + app (port 5173) |
-| `npm test` | Runs the 23 security, role, guardian-consent, age-gate and twin tests |
+| `npm test` | Runs the security, role, guardian-consent and age-gate tests |
 | `npm run audit` | Checks every package for known vulnerabilities |
 | `npm run build` then `npm start` | Production mode: the backend serves the built app on one origin |
 
@@ -58,37 +72,6 @@ The clock at the top follows the **real time in India (IST)** by default (green 
 on any device timezone. Change the day or time by hand to look ahead, tap **back to now** to return,
 or tap **demo time** (Mon 11:15) for the pitch, where the sample timetables tell the cleanest story.
 Classrooms show as *closed* on Sundays and outside 09:00–17:00.
-
----
-
-## Roles: student, faculty, facilities staff
-
-Pick who you are at the top of the login and sign-up screens. The server checks the
-role on every request, so hiding a button is never the only protection.
-
-| | Student | Faculty | Facilities staff |
-|---|---|---|---|
-| Logs in with | Roll number | Employee ID | Staff ID |
-| Sign-up asks for | Name, roll number | Name, employee ID, department | Name, staff ID, team, **facilities access code** |
-| Home screen | **Find**: AI room search, best match, book | **My classes**: today's teaching + book a room for an extra class | **Operations**: alerts to fix, rooms wasting power, log readings |
-| Tabs | Find, Map, Timetable, Predict, Campus, Squad, You | My classes, Map, Timetable (my teaching), Campus, Profile | Operations, Map, Analytics, Profile |
-| Book rooms | ✅ | ✅ (extra/make-up classes, smallest room that fits) | ❌ |
-| Campus Twin | View only | View only | View, **log energy & water readings**, acknowledge/resolve alerts |
-| Profile | Room karma, badges | Department, classes a week, extra classes booked | Own work log: alerts resolved/acknowledged, readings logged (30 days) |
-| CampusAI chat | ✅ | ✅ | — |
-
-The **map is shared by everyone**. The three-step strip at the top changes per role
-(Search → Match → Book · Check → Find → Book · Spot → Fix → Log).
-
-- **Facilities sign-up needs `FACILITIES_ACCESS_CODE`** (from the estate office). Without it set,
-  facilities sign-up is closed, so nobody can just pick "facilities" and change campus data.
-- A login must match the role picked: a facilities ID won't work from the Student screen.
-- **Demo accounts** (password `Ghost-Demo-2026` for all, shown on the login screen with a *Fill demo* button):
-  student `23BCS10432`, faculty `E21045`, facilities `FMS2041`.
-- Facilities readings go into the current 15-minute slot, replace the simulated value there and are
-  tagged `source = 'manual'` with who logged them (`logged_by`).
-- `GET /api/twin/me` (facilities only) returns the signed-in staff member's own counts for their profile;
-  it never returns anyone else's rows.
 
 ---
 
@@ -104,11 +87,10 @@ needs a parent's or guardian's verifiable consent before it stores their data. G
    The code sits after `#`, so it never reaches server logs.
 4. The parent sees exactly what's stored and why, gives their name and relation, confirms they're
    an adult (date of birth checked once, not saved) and approves. Then the account is created.
-5. The student gets **the same access as any student**. Room karma, badges and behaviour stats are
-   hidden for under-18s, since the Act bans behavioural tracking of children.
+5. The student gets **the same access as any student**. GhostSlot keeps no behaviour scores for anyone.
 6. The parent can come back to the same link to **withdraw consent**, which deletes the account.
 
-Faculty and facilities accounts stay **18+ only**. Limitation: the parent's details are
+Faculty accounts stay **18+ only**. Limitation: the parent's details are
 self-declared (one of the routes DPDP Rules r.10 allows). For stronger checks, verify against the
 university's admission records or a DigiLocker age token.
 
@@ -122,7 +104,7 @@ Signup is three steps: **You → Age check → Secure**.
   The server works out the exact age (on India's date). If they're 18+,
   they get a one-time pass that's valid for 20 minutes. The date of birth is then
   discarded: it's never saved, logged or sent anywhere else.
-- **Under 18 (faculty / facilities):** no account is created. The student sees a clear, kind explanation
+- **Under 18 (faculty):** no account is created. The student sees a clear, kind explanation
   (DPDP Act 2023). Sign-up is paused on that browser for 24 hours so they can't
   just go back and change the year.
 - **Can't be skipped:** the server refuses any signup without a valid,
@@ -130,61 +112,6 @@ Signup is three steps: **You → Age check → Secure**.
 
 The **You** tab has a **Security & privacy** card: 18+ verified badge, active
 sessions, *Sign out everywhere*, the privacy notice, and *Delete my account*.
-
----
-
-## Whole campus + campus map (new)
-
-GhostSlot now covers the whole campus, not just classrooms. Filter by **All · Study · Food · Sports · Hangout** in Find, or open the **Map** tab.
-
-| Kind of place | Examples (real CU places) | How GhostSlot knows if it's free |
-|---|---|---|
-| Classrooms, labs | A2·104, CSE Lab 9, D Block LT-3 | Timetable + bookings |
-| Library | D6 Library (KRC) | Campus Wi-Fi crowd (how full) |
-| Food | Food Republic (Domino's, Burger Singh, Major Chang's, Roll Express), Urban King Café, The Food Scientists, Chai Nagri, The Samosa Express, Trending Food | Campus Wi-Fi crowd |
-| Sports | Basketball Courts 1 & 2, Badminton Hall, Volleyball, Fitness Centre, Main Ground | Campus Wi-Fi crowd. Courts can be booked |
-| Hangout | Fountain Area | Campus Wi-Fi crowd |
-| Demo Room | Wi-Fi CSI demo | ESP32-S3 CSI pair (live hardware) |
-
-- Places show **quiet / moderate / busy / closed**, how full they are, and their opening hours.
-  Courts can be booked; cafés and the library are walk-in.
-- **Prototype note:** campus Wi-Fi access-point counts aren't connected yet, so crowd levels are
-  **simulated** with a realistic daily pattern (the lunch rush at Food Republic, the evening rush at the courts).
-  `crowdAt()` in `src/campus.js` is the one function to swap for the live Wi-Fi feed.
-- Everything about the places (names, hours, capacities, map positions) is in **`src/campus.js`**.
-  Hours, capacities and positions are demo values, so correct them there.
-- **Using the official CU map:** save it as `public/brand/campus-map.png`, set
-  `CAMPUS_MAP_IMAGE = "/brand/campus-map.png"` in `src/campus.js`, then adjust each place's `x`/`y`
-  so the pins sit on the right buildings. Until then the Map tab draws a schematic layout.
-
----
-
-## Campus Digital Twin (new in 0.4)
-
-Open the **Twin** tab. Everything is computed in the database
-(`supabase/migrations/0002_ghostslot_twin.sql`) and served by `server/twin.js`
-to signed-in users only.
-
-| Feature | How it works |
-|---|---|
-| **Live campus view** | Latest 15-minute reading per room: *in use*, *free*, or *empty but powered* |
-| **Classroom utilisation** | Heatmap of how often each room is used, per weekday hour |
-| **Energy waste** | A slot is wasted when nobody is inside but the room draws over 25% of its rated load. Shown in kWh and ₹ (tariff in `TWIN_TARIFF_INR_PER_KWH`, default ₹8/kWh, an assumption) |
-| **Water anomalies** | Robust z-score against the median + MAD for the same building, hour and weekday/weekend. Above 6 = flagged; back-to-back readings become one episode |
-| **Alerts** | Rooms wasting power now + water episodes. Facilities staff can *Acknowledge* or *Mark resolved*; students and faculty see them read-only |
-| **Log a reading** | Facilities staff only: type in a water-meter or room-energy reading |
-| **Use what's already built** | Rooms used under 30% of class hours get a reallocation suggestion |
-
-> **Data honesty:** CU's meters aren't connected yet. `gs_twin_generate()` simulates
-> realistic readings (class timings, lunch dip, lights left on, night-time leaks) and
-> every row is tagged `source = 'simulated'`. The app shows a *Simulated data*
-> banner. The server tops up the feed every 5 minutes, and after a sleep it backfills
-from the last stored reading, so there are no gaps in the history.
-> Real sensor rows go in the same tables with `source = 'sensor'`.
-
-**Setup:** run migrations `0001` to `0006` in the Supabase SQL editor (in order),
-then set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Without them the Twin tab
-says it isn't connected; the rest of the app still works.
 
 ---
 
@@ -202,7 +129,7 @@ Find and Map ask where you are, then rank rooms by **real walking time from you*
 
 | Way | How |
 |---|---|
-| **Door QR** (most accurate indoors) | Facilities → Map → *Door QR codes* → Print. Scanning opens `/?at=<room>` and sets your spot |
+| **Room link** | Opening `/?at=<room id>` (e.g. from a printed sign) sets your spot to that room |
 | **Pick place** | One tap from a list of blocks, rooms and spots |
 | **Tap the map** | *Set my spot on the map*, then tap |
 | **GPS** | Works once the map is calibrated (below) |
@@ -211,18 +138,17 @@ Find and Map ask where you are, then rank rooms by **real walking time from you*
 - With a spot set, Best Match gives distance more weight (`calculateRoomScore` in `src/App.jsx`).
 - Your spot stays on this phone for 3 hours, then asks again. It is never sent to the server.
 
-**Turning GPS on (one time, on campus):** log in as facilities → Map → *GPS calibration*.
-Stand at 3 spots far apart (e.g. Main Gate side, Sports Complex, A2 Block), pick each and tap
-*Save my GPS here*. Then *Copy for campus.js* and paste the list into `GEO_ANCHORS` in
-`src/campus.js`. No coordinates are guessed. Until this is done, GPS falls back to *Pick place*.
+**Turning GPS on:** add at least 3 real coordinates (spread out on campus) to `GEO_ANCHORS` in
+`src/campus.js`, each matched to its x/y on the map. No coordinates are guessed. Until this is done,
+GPS falls back to *Pick place*.
 
 ## Built not to break
 
-- Double taps are ignored on booking, *I'm out*, pings, AI search, login and signup; the same API
+- Double taps are ignored on booking, *I'm out*, AI search, login and signup; the same API
   call fired twice shares one request, and every call times out after 15 s with a clear message.
 - Before locking a room the app re-checks it's still free. One booking at a time.
 - A booking stores its real end time, so it survives a refresh or a sleeping phone and frees the
-  room automatically. Your timetable, booking and karma are saved per user on this browser.
+  room automatically. Your timetable and booking are saved per user on this browser.
 - If one screen crashes it shows *Try again* instead of a blank page. An offline banner shows
   when the connection drops.
 
@@ -239,76 +165,6 @@ Both AI features now call Gemini **only from the backend**, so the key never end
 
 Put the key in `server/.env` → `GEMINI_API_KEY=`. Get one at https://aistudio.google.com/apikey.
 Both features are for signed-in users only and are rate-limited per account.
-
----
-
-## Room check-in (new in 0.6)
-
-- **Book a room, then check in within 10 minutes**: scan the room's door QR
-  (Map → facilities → Door QR codes, printed on each door) or tap **Check in**.
-  No check-in → the booking is released for everyone. No ghost bookings.
-- **Scanning a door QR without a booking** checks you in as a walk-in.
-- Room cards show **"N checked in"**, live for everyone. Only counts are shared,
-  never names (`server/checkin.js`, table `gs_checkins`, migration `0009`).
-- Privacy: a row exists only while you're checked in; checking out or the time
-  running out deletes it. No history is kept.
-
----
-
-## Demo Room: people count from the CSI mesh (new in 0.5)
-
-Four boards (`hardware/gs_mesh_node`) in the room's corners ping each other and
-report every link to `POST /api/csi/mesh`. `server/csimesh.js` turns all links
-into one feature row every 2 s, records labelled rows, and, once a model is
-trained (`tools/mesh/train_count_model.py` → `server/models/mesh-count.json`),
-predicts **0 / 1 / 2 / 3 / 4 / 5+ people** live. With exactly one person inside and a zone model (`--task zone` → `server/models/mesh-zone.json`), it also names a rough **zone**: front, back, left, right or centre. The app shows it as the
-**Wi-Fi people radar** on the Demo Room card.
-
-- No model = no count shown. Simulation mode is always labelled.
-- Accuracy shown in the app is the held-out session accuracy from training.
-- **Calibrated levels** (`tools/mesh/calibrate_levels.py` → `server/models/mesh-levels.json`):
-  with little data, exact counts aren't reliable, so the server can instead show
-  **Empty / 1 person / 2+** from overall motion averaged over ~20 s, with cut-offs
-  learned from labelled recordings in that room. Used only when no count model is
-  present; the app labels it "calibrated levels" and shows its held-out accuracy.
-- Full setup, recording and training steps: [hardware/MESH_GUIDE.md](hardware/MESH_GUIDE.md).
-
----
-
-## Demo Room: IR door counter (new in 0.8)
-
-Two IR sensors on the door frame (`hardware/gs_door_counter`): beam A outside, beam B inside.
-**A → A+B → B = in, B → A+B → A = out**, anything else is ignored, a beam blocked for more than 4 s resets.
-The board posts each event to `POST /api/door/event` and a 1 s heartbeat with the live beams
-(`/api/door/heartbeat`, device key). The Demo Room card shows the live count next to QR check-ins
-and the Wi-Fi count, and says when they disagree (people inside without checking in, tailgating,
-ghost bookings). Counts only, kept in memory. Reset with `python3 tools/mesh/mesh_record.py door-reset`.
-
-## Demo Room: Wi-Fi CSI sensing
-
-Two ESP32-S3 boards act as a CSI transmitter/receiver pair. The backend
-(`server/csi.js`) validates, smooths and compares readings against a calibrated
-baseline, and reports `CALIBRATING` · `NORMAL` · `CHANGE_DETECTED` · `OFFLINE` · `UNKNOWN`.
-**`CHANGE_DETECTED` means the Wi-Fi channel changed. It is not a people count.**
-
-It runs in **simulation mode** by default (no hardware needed). For real hardware, in `server/.env`:
-```
-CSI_MODE=hardware
-CSI_DEVICE_KEY=<a long random string, the same one flashed into the boards>
-```
-**New in 0.2:** every board request must send the key as a header, otherwise it is rejected:
-```
-POST /api/csi/demo-room
-X-Device-Key: <CSI_DEVICE_KEY>
-{ "nodeId": "node-a", "value": 52.3 }
-```
-The transmitter (node-a) has no reading of its own, so it sends a heartbeat that
-marks it online without entering the pipeline: `{ "nodeId": "node-a", "heartbeat": true }`.
-Firmware for all three boards and the build guide live in `hardware/`.
-
-The OLED polls `GET /api/csi/status?device=oled` with the same `X-Device-Key` header
-to show as online. The calibrate and mode-switch endpoints need `X-Admin-Key: <CSI_ADMIN_KEY>`
-and are switched off if no admin key is set.
 
 ---
 
@@ -331,8 +187,7 @@ and are switched off if no admin key is set.
 
 Use **Render** with the included `render.yaml` (Dashboard → New → Blueprint).
 The app and API run on one domain, which the secure cookies and the CSP rely on.
-Render asks for `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required: accounts and the twin
-live there, and Render's free disk is wiped on every deploy) and `GEMINI_API_KEY` (optional).
+Render asks for `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required: accounts live there, and Render's free disk is wiped on every deploy) and `GEMINI_API_KEY` (optional).
 Free Render services sleep after 15 idle minutes, so open the link ~1 minute before a demo.
 Before a real launch, set `DEMO_ACCOUNT=off`.
 
@@ -358,5 +213,4 @@ git push -u origin main
 ## Acknowledgements
 
 Built by Bhavishay (Bhishu), Team COGNIX, Chandigarh University, with help from AI tools (Claude).
-Campus Twin analysis methods were tested on public datasets: UCI Occupancy Detection (Candanedo & Feldheim, 2016)
-and UCI Appliances Energy Prediction (Candanedo, Feldheim & Deramaix, 2017).
+

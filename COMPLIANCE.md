@@ -13,12 +13,12 @@ These are the six checks Team COGNIX applies to every project, plus India's DPDP
 
 ## India: DPDP Act 2023
 
-- **Children (s.9, DPDP Rules 2025 r.10):** anyone under 18 is a child. Under-18 **students** can join only after a parent or legal guardian approves through a consent link: until then nothing becomes an account, and unapproved requests are deleted after 48 hours. The guardian confirms they're an adult (date of birth checked once and discarded), sees a plain notice of what's stored and why, and can withdraw consent from the same link, which deletes the account. Under-18 accounts get no behavioural scores (room karma, badges), no tracking and no ads (s.9(3)). Faculty and facilities accounts stay 18+ only.
+- **Children (s.9, DPDP Rules 2025 r.10):** anyone under 18 is a child. Under-18 **students** can join only after a parent or legal guardian approves through a consent link: until then nothing becomes an account, and unapproved requests are deleted after 48 hours. The guardian confirms they're an adult (date of birth checked once and discarded), sees a plain notice of what's stored and why, and can withdraw consent from the same link, which deletes the account. No account gets behavioural scores, tracking or ads, under-18 or not (s.9(3)). Faculty accounts stay 18+ only.
 - **Notice and consent (s.5–6):** a plain-language privacy notice is shown at signup, and the student must tick to agree. It's always reachable from the login screen and the You tab.
-- **Data minimisation (s.6, s.8):** only name, ID (roll number / employee ID / staff ID), role, department or team (faculty and facilities), password hash, an "18+ verified" flag and timestamps are kept. No birth date, location or contacts.
+- **Data minimisation (s.6, s.8):** only name, ID (roll number / employee ID), role, department (faculty), password hash, an "18+ verified" flag and timestamps are kept. No birth date, location or contacts.
 - **Erasure (s.12):** *Delete my account* in the You tab removes the account and every session immediately.
 - **Security safeguards (s.8(5)):** see [SECURITY.md](SECURITY.md).
-- **Campus Twin:** stores room-level counts and meter readings only, never who was in a room. No personal data is added.
+- **No occupancy data:** GhostSlot doesn't sense or record who is in a room. Room status comes only from timetables and bookings.
 - **Grievance (s.13):** a contact is listed in the notice. Add a real email before launch.
 
 This is a practical checklist, not legal advice.

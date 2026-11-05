@@ -7,8 +7,7 @@ export const GRIEVANCE_CONTACT = "Team COGNIX (GhostSlot), Dept. of CSE, Chandig
 
 const SECTIONS = [
   ["What we collect", [
-    "Your name, your ID (student roll number, employee ID or staff ID) and whether you're a student, faculty member or facilities staff. Faculty and facilities also give their department or team.",
-    "If you're facilities staff and log a meter reading, we record that your account logged it.",
+    "Your name, your ID (student roll number or employee ID) and whether you're a student or a faculty member. Faculty also give their department.",
     "Your password, stored only as a salted scrypt hash. Nobody can read it back, including us.",
     "The fact that you passed the age check (18+, or under 18 with a guardian's approval), and when.",
     "A login session cookie (httpOnly, expires after 7 days).",
@@ -27,10 +26,10 @@ const SECTIONS = [
     "Under-18 students can join only after a parent or legal guardian approves through a consent link (DPDP Act 2023, s.9). Until then nothing becomes an account, and an unapproved sign-up is deleted after 48 hours.",
     "We keep the guardian's name, relation and when they approved. Their date of birth is checked once to confirm they're an adult and isn't saved.",
     "No tracking, behavioural scores or ads for under-18s. The guardian can withdraw consent from the same link at any time, which deletes the account.",
-    "Faculty and facilities accounts are for adults only.",
+    "Faculty accounts are for adults only.",
   ]],
   ["Why, and for how long", [
-    "Only to run your account, find you rooms and, for facilities staff, keep the campus energy and water records.",
+    "Only to run your account and find you empty rooms.",
     "We keep your account until you delete it. Delete it any time from You → Security & privacy, and it's gone immediately.",
   ]],
   ["Your rights", [

@@ -1,22 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
-import { MeshRadar, MeshDevRows, useMeshStatus } from "./MeshRadar.jsx";
-import { DoorCounter, useDoorStatus } from "./DoorCounter.jsx";
 import Papa from "papaparse";
 import {
-  MapPin, Clock, Users, TrendingUp, Bell, Plug, Volume1,
-  VolumeX, Search, ChevronRight, Sparkles, Trophy, Snowflake, X,
-  CheckCircle2, Radar, Flame, MessageCircleMore, CalendarClock, Plus, Trash2,
+  MapPin, Clock, Users, Plug, Volume1,
+  VolumeX, Search, ChevronRight, Sparkles, Snowflake, X,
+  CheckCircle2, CalendarClock, Plus, Trash2,
   LogOut, Upload, Download, FileWarning,
-  Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi, Percent,
-  ShieldCheck, MonitorSmartphone, Map as MapIcon, Activity, BookOpen, Wrench, UserRound, ClipboardCheck, Navigation, WifiOff, QrCode, ScanLine,
+  Info, Wand2, AlertTriangle, Building2, Sparkle, ArrowRight, RefreshCw, Wifi,
+  ShieldCheck, MonitorSmartphone, Map as MapIcon, BookOpen, UserRound, Navigation, WifiOff,
 } from "lucide-react";
 import AuthScreen from "./auth/AuthScreen";
 import PrivacyNotice from "./auth/PrivacyNotice";
-import { ROLE_META, ROLE_NOTIFS } from "./auth/roles";
+import { ROLE_META } from "./auth/roles";
 import { BrandMark, Wordmark } from "./brand/BrandMark";
 import { api } from "./api";
-import { StaffWorkLog } from "./roles/StaffWorkLog";
-import { CAMPUS_SPACES, ROOM_POSITIONS, CATEGORIES, wifiStatus, crowdLabel } from "./campus";
+import { ROOM_POSITIONS } from "./campus";
 import WhereAmI from "./WhereAmI";
 import ErrorBoundary from "./ErrorBoundary";
 import { placeList, findPlace, walkMinutes, walkLabel, loadLocation, saveLocation } from "./location";
@@ -25,15 +22,7 @@ import { loadState, saveState, clearState, cleanSlots, cleanRoomSlots } from "./
 // Heavier screens load only when opened, so the first screen appears faster.
 const CampusAI = lazy(() => import("./CampusAI"));
 const CampusMap = lazy(() => import("./CampusMap"));
-const Twin = lazy(() => import("./Twin"));
 const FacultyHome = lazy(() => import("./roles/FacultyHome"));
-const OpsHome = lazy(() => import("./roles/OpsHome"));
-const ForecastChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.ForecastChart })));
-const UnderusedChart = lazy(() => import("./charts/PredictCharts").then((m) => ({ default: m.UnderusedChart })));
-const DoorQrCodes = lazy(() => import("./MapTools").then((m) => ({ default: m.DoorQrCodes })));
-const CheckInQr = lazy(() => import("./CheckInQr"));
-const QrScanner = lazy(() => import("./QrScanner"));
-const GpsCalibration = lazy(() => import("./MapTools").then((m) => ({ default: m.GpsCalibration })));
 function ScreenLoading() {
   return <div role="status" style={{ margin: "0 18px", padding: 18, borderRadius: 16, background: "#120F1E", border: "1px solid rgba(196,181,253,0.14)", color: "#A39CC4", fontSize: 13 }}>Loading…</div>;
 }
@@ -71,20 +60,11 @@ const STUDY_ROOMS = [
     description: "Tucked-away study pod on the library's 3rd floor. Smallest spot on campus (8 seats) but the most peaceful — power outlets, Wi-Fi+, and AC all included." },
   { id: "D-Block-210", name: "D Block · 210", block: "D Block", floor: "2nd floor", capacity: 55, walk: "8 min walk", tags: ["plug"], vibe: "medium", util7d: 33, type: "classroom",
     description: "Mid-sized D Block classroom that most students walk past without noticing. Solid fallback option when everything closer is occupied — and it usually is free." },
-  { id: "demo-room", name: "Demo Room", block: "CSE Block", floor: "Ground floor", capacity: 12, walk: "2 min walk", tags: ["plug", "wifi+"], vibe: "quiet", util7d: 0, type: "classroom",
-    description: "GhostSlot's only physical-sensing room. Two ESP32-S3 nodes watch the room's Wi-Fi channel for changes as a live demo of Wi-Fi CSI (see the CSI status on its card).",
-    csiEnabled: true },
 ];
 
-// Whole campus = timetable rooms above + food / sports / hangout spaces
-// (src/campus.js). Every space carries a category, how it's sensed, whether
-// it can be booked, and its pin position on the campus map.
-const ROOM_META = [
-  ...STUDY_ROOMS.map((r) => ({ category: "study", sensing: r.csiEnabled ? "csi" : "timetable", bookable: true, hours: ["09:00", "17:00"], pos: ROOM_POSITIONS[r.id], ...r })),
-  ...CAMPUS_SPACES.map((r) => ({ util7d: 0, pos: { x: r.x, y: r.y }, ...r })),
-];
-// Rooms whose availability comes from timetables (used by Timetable, Predict, CSV import).
-const TIMETABLE_ROOMS = ROOM_META.filter((r) => r.sensing !== "wifi");
+// Every room's free/busy status comes only from its timetable (plus bookings).
+const ROOM_META = STUDY_ROOMS.map((r) => ({ bookable: true, hours: [CAMPUS_START, CAMPUS_END], pos: ROOM_POSITIONS[r.id], ...r }));
+const TIMETABLE_ROOMS = ROOM_META;
 
 // seed data tuned so the default demo (Mon, 11:15) tells a clean story:
 // student is free 11:00-13:00 -> CSE Lab 9 is wide open (best), A2-104 only
@@ -101,7 +81,6 @@ const SEED_ROOM_SLOTS_MON = {
   "A1-212": [{ id: "s5", day: "Mon", start: "09:00", end: "11:00", subject: "Maths III" }, { id: "s6", day: "Mon", start: "15:00", end: "17:00", subject: "EVS" }],
   "Library-Pod-4": [],
   "D-Block-210": [{ id: "s7", day: "Mon", start: "13:00", end: "14:30", subject: "COA" }],
-  "demo-room": [],
 };
 const SEED_ROOM_SLOTS = Object.fromEntries(Object.entries(SEED_ROOM_SLOTS_MON).map(([k, v]) => [k, everyWeekday(v)]));
 
@@ -124,39 +103,16 @@ const ROLE_TABS = {
     { id: "find", label: "Find", icon: Search },
     { id: "map", label: "Map", icon: MapIcon },
     { id: "timetable", label: "Timetable", icon: CalendarClock },
-    { id: "predict", label: "Predict", icon: TrendingUp },
-    { id: "twin", label: "Campus", icon: Activity },
-    { id: "squad", label: "Squad", icon: MessageCircleMore },
-    { id: "profile", label: "You", icon: Trophy },
+    { id: "profile", label: "You", icon: UserRound },
   ],
   faculty: [
     { id: "classes", label: "My classes", icon: BookOpen },
+    { id: "find", label: "Free rooms", icon: Search },
     { id: "map", label: "Map", icon: MapIcon },
     { id: "timetable", label: "Timetable", icon: CalendarClock },
-    { id: "twin", label: "Campus", icon: Activity },
-    { id: "profile", label: "Profile", icon: UserRound },
-  ],
-  facilities: [
-    { id: "ops", label: "Operations", icon: Wrench },
-    { id: "map", label: "Map", icon: MapIcon },
-    { id: "twin", label: "Analytics", icon: Activity },
     { id: "profile", label: "Profile", icon: UserRound },
   ],
 };
-
-const FRESH_STATS = { ghosted: 0, early: 0, onTime: 0 };
-const DEMO_STATS = { ghosted: 1, early: 5, onTime: 0 };
-function cleanStats(x) {
-  if (!x || typeof x !== "object") return null;
-  const n = (v) => (Number.isInteger(v) && v >= 0 && v < 100000 ? v : 0);
-  return { ghosted: n(x.ghosted), early: n(x.early), onTime: n(x.onTime) };
-}
-const SQUAD = [
-  { name: "Ishaan", init: "IS", free: "free till 1:40", slot: "same as you" },
-  { name: "Meher", init: "MH", free: "free till 2:00", slot: "same as you" },
-  { name: "Devansh", init: "DV", free: "free in 20 min", slot: "next period" },
-];
-
 
 const vibeMeta = {
   silent: { icon: VolumeX, label: "silent zone", color: "#D2C8F5" },
@@ -165,20 +121,9 @@ const vibeMeta = {
   loud: { icon: Volume1, label: "chaos energy", color: "#FF6B6B" },
 };
 
-// CSI (Wi-Fi sensing) display states for the Demo Room only. CHANGE_DETECTED
-// intentionally never says "occupied" — see server/csi.js for the pipeline
-// that produces these states.
-const CSI_STATE_META = {
-  CALIBRATING: { dot: "🟡", label: "CSI calibrating" },
-  NORMAL: { dot: "🟢", label: "CSI normal" },
-  CHANGE_DETECTED: { dot: "🟠", label: "CSI change detected" },
-  OFFLINE: { dot: "🔴", label: "CSI offline" },
-  UNKNOWN: { dot: "⚪", label: "CSI status unknown" },
-};
-
 const LOCATIONS = ["Anywhere", "CSE Block", "A1 Block", "A2 Block", "Central Library", "D Block"];
 const DURATION_PRESETS = [30, 60, 90, 120];
-const DEFAULT_PREFS = { category: null, duration: 60, location: "Anywhere", vibe: null, requirements: [], capacity: 0, freeText: "", sortBy: "bestMatch", roomType: null, walkTime: null, freeOnly: false };
+const DEFAULT_PREFS = { duration: 60, location: "Anywhere", vibe: null, requirements: [], capacity: 0, freeText: "", sortBy: "bestMatch", roomType: null, walkTime: null, freeOnly: false };
 const DEMO_QUERY = "I need a quiet place near CSE for 90 minutes with charging.";
 
 // =========================================================================
@@ -236,10 +181,8 @@ function roomStatus(slots, day, nowMin) {
   const until = next ? next[0] : toMin(CAMPUS_END);
   return { free: true, freeUntilMin: until, freeFor: Math.max(0, until - nowMin) };
 }
-// Wi-Fi-sensed spaces (food court, courts, library…) use opening hours + crowd;
-// timetable rooms use the timetable. Same output shape either way.
 function spaceStatus(room, slots, day, nowMin) {
-  return room.sensing === "wifi" ? wifiStatus(room, day, nowMin) : roomStatus(slots, day, nowMin);
+  return roomStatus(slots, day, nowMin);
 }
 function inAnyWindow(windows, min) {
   return windows.some(([s, e]) => min >= s && min < e);
@@ -357,7 +300,7 @@ function calculateRoomScore(room, status, prefs) {
   let vibeScore = 1;
   if (prefs.vibe) vibeScore = (VIBE_EQUIVALENTS[prefs.vibe] || [prefs.vibe]).includes(room.vibe) ? 1 : 0.25;
 
-  const utilScore = Math.max(0, 1 - (typeof status.crowd === "number" ? status.crowd : room.util7d) / 100);
+  const utilScore = Math.max(0, 1 - room.util7d / 100);
 
   let capacityScore = 0.8;
   if (prefs.capacity) capacityScore = room.capacity >= prefs.capacity ? 1 : 0.15;
@@ -379,67 +322,22 @@ function calculateRoomScore(room, status, prefs) {
 function getRecommendationExplanation(room, status, prefs) {
   const requestedDuration = prefs.duration || 30;
   const lines = [];
-  if (room.sensing === "wifi") {
-    if (status.closed) lines.push(`Closed now · opens ${status.busyUntil}`);
-    else lines.push(`${crowdLabel(status.crowd).label[0].toUpperCase()}${crowdLabel(status.crowd).label.slice(1)} right now · ${status.crowd}% full (campus Wi-Fi)`);
-    if (!status.closed) lines.push(`Open until ${room.hours[1]}`);
-    if (prefs.vibe && (VIBE_EQUIVALENTS[prefs.vibe] || [prefs.vibe]).includes(room.vibe)) lines.push(`${vibeMeta[room.vibe].label} — matches your vibe`);
-    (prefs.requirements || []).forEach((r) => { if (room.tags.includes(r)) lines.push(r === "plug" ? "Charging available" : r === "wifi+" ? "Wi-Fi+ available" : "AC available"); });
-    lines.push(room.walk);
-    lines.push(room.bookable ? "Bookable in GhostSlot" : "Walk in · no booking needed");
-    return lines;
-  }
+  if (status.closed) { lines.push(`Closed now · opens ${status.busyUntil}`); lines.push(room.walk); return lines; }
   if (status.free && status.freeFor >= requestedDuration) lines.push(`Free for ${fmtMin(status.freeFor)} — covers your ${requestedDuration} min ask`);
   else if (status.free) lines.push(`Free for ${fmtMin(status.freeFor)} — a bit short of your ${requestedDuration} min ask`);
-  else lines.push(`Occupied until ${status.busyUntil}`);
+  else lines.push(`Class on till ${status.busyUntil}`);
   if (prefs.vibe && (VIBE_EQUIVALENTS[prefs.vibe] || [prefs.vibe]).includes(room.vibe)) lines.push(`${vibeMeta[room.vibe].label} — matches your vibe`);
   (prefs.requirements || []).forEach((r) => {
     if (room.tags.includes(r)) lines.push(r === "plug" ? "Charging available" : r === "wifi+" ? "Wi-Fi+ available" : "AC available");
   });
   if (prefs.location && prefs.location !== "Anywhere" && room.block === prefs.location) lines.push(`Right in ${prefs.location}`);
   lines.push(room.walk);
-  if (room.util7d < 25) lines.push(`Low weekly utilization (${room.util7d}%) — rarely booked`);
   return lines;
-}
-
-// =========================================================================
-// DEMAND FORECASTING (local heuristic — explicitly NOT a trained ML model)
-// =========================================================================
-function calculateShortageRisk(hourMin, day, roomSlots) {
-  const statuses = TIMETABLE_ROOMS.map((r) => roomStatus(roomSlots[r.id] || [], day, hourMin));
-  const busyRatio = statuses.filter((s) => !s.free).length / TIMETABLE_ROOMS.length;
-  const avgUtil = TIMETABLE_ROOMS.reduce((a, r) => a + r.util7d, 0) / TIMETABLE_ROOMS.length / 100;
-  return Math.round(100 * Math.min(1, 0.65 * busyRatio + 0.35 * avgUtil));
-}
-function hourLabel(h) {
-  if (h === 12) return "12pm";
-  return h > 12 ? `${h - 12}pm` : `${h}am`;
-}
-function getUnderusedRooms(rooms, n = 3) {
-  return [...rooms].sort((a, b) => a.util7d - b.util7d).slice(0, n).map((r) => ({ name: r.name, util: r.util7d }));
 }
 
 // =========================================================================
 // SMALL UI ATOMS
 // =========================================================================
-function GhostMeter({ pct, height = 10 }) {
-  const blocks = 10;
-  const filled = Math.round((pct / 100) * blocks);
-  const color = pct < 30 ? "#3DDC97" : pct < 65 ? "#F5B544" : "#FF6B6B";
-  return (
-    <div style={{ display: "flex", gap: 3 }}>
-      {Array.from({ length: blocks }).map((_, i) => (
-        <div key={i} style={{ width: 8, height, borderRadius: 2, background: i < filled ? color : "rgba(196,181,253,0.08)", transition: "background 300ms ease" }} />
-      ))}
-    </div>
-  );
-}
-
-// Room check-in (server/checkin.js): a booking must be checked into within
-// this many minutes (door QR or the "Check in" button), else it is released.
-const CHECKIN_GRACE_MIN = 10;
-const ROOM_NAME = Object.fromEntries(STUDY_ROOMS.map((r) => [r.id, r.name]));
-
 function Pill({ children, tone = "default" }) {
   const tones = {
     default: { bg: "rgba(196,181,253,0.06)", color: "#D2C8F5", border: "rgba(196,181,253,0.12)" },
@@ -458,47 +356,19 @@ function Pill({ children, tone = "default" }) {
 // room status label used consistently across the app
 function statusMeta(room, status, prefs, booking) {
   if (booking && booking.roomId === room.id) return { tone: "default", label: `booked by you · ${fmtMin(Math.ceil(booking.secondsLeft / 60))} left` };
-  if (room.sensing === "wifi") {
-    if (status.closed) return { tone: "coral", label: `closed · opens ${status.busyUntil}` };
-    if (status.full) return { tone: "coral", label: `packed · ${status.crowd}% full` };
-    const c = crowdLabel(status.crowd);
-    return { tone: c.tone, label: `${c.label} · ${status.crowd}% full` };
-  }
   if (status.closed) return { tone: "coral", label: `closed · opens ${status.busyUntil}` };
-  if (!status.free) return { tone: "coral", label: `occupied · free at ${status.busyUntil}` };
+  if (!status.free) return { tone: "coral", label: `class on · free at ${status.busyUntil}` };
   const requestedDuration = prefs?.duration || 30;
   if (status.freeFor < requestedDuration) return { tone: "amber", label: `only ${fmtMin(status.freeFor)} available` };
   return { tone: "lime", label: `free for ${fmtMin(status.freeFor)}` };
 }
 
-function DemoRoomCsiBadge({ mesh, onOpenDevDashboard }) {
-  // Status of the 4-board ESP32-S3 mesh (the old 2-board CSI pair is retired).
-  if (!mesh) return <div style={{ marginTop: 2, fontSize: 11.5, color: "#857DA8" }}>⚪ Wi-Fi mesh status unavailable</div>;
-  const nodes = Object.values(mesh.nodes || {});
-  const online = nodes.filter((n) => n.online).length;
-  const sim = mesh.mode === "simulation";
-  const live = !sim && online >= 2;
-  return (
-    <div style={{ marginTop: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 10, padding: "8px 10px" }}>
-      <span style={{ fontSize: 12, fontWeight: 700 }}>
-        {sim ? "🟡 Wi-Fi mesh · simulation" : live ? "🟢 Wi-Fi mesh live" : "🔴 Wi-Fi boards offline"}
-        <span style={{ fontWeight: 500, color: "#A39CC4" }}> · {online}/{nodes.length || 4} boards · {mesh.pairsHeard ?? 0}/6 pairs</span>
-      </span>
-      {onOpenDevDashboard && (
-        <button onClick={onOpenDevDashboard} style={{ background: "none", border: "1px solid rgba(196,181,253,0.12)", borderRadius: 8, padding: "3px 8px", fontSize: 10.5, color: "#A39CC4", cursor: "pointer" }}>🛠 Developer view</button>
-      )}
-    </div>
-  );
-}
-
-function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge, csi, mesh, door, onOpenDevDashboard, hereCount = 0, showQr = true }) {
+function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, highlight, scoreBadge }) {
   const vm = vibeMeta[room.vibe];
   const VibeIcon = vm.icon;
   const meta = statusMeta(room, status, prefs, booking);
   const isMine = booking && booking.roomId === room.id;
   const canBook = room.bookable !== false && status.free && !hasActiveBooking;
-  const [qrOpen, setQrOpen] = useState(false);
-  const canCheckIn = !!ROOM_NAME[room.id] && showQr;
   return (
     <div style={{ background: "#120F1E", border: highlight ? "1px solid rgba(167,139,250,0.4)" : "1px solid rgba(196,181,253,0.07)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -515,39 +385,12 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <GhostMeter pct={room.sensing === "wifi" ? (status.crowd || 0) : room.util7d} />
-        <span style={{ fontSize: 11, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace" }}>
-          {room.sensing === "wifi" ? (status.closed ? `opens ${status.busyUntil}` : `Wi-Fi crowd · ${status.crowd}% full`) : `${room.util7d}% booked this week`}
-        </span>
-      </div>
-
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {hereCount > 0 && <Pill tone="lime"><Users size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{hereCount} checked in</Pill>}
         <Pill><Users size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{room.capacity} seats</Pill>
         <Pill><VibeIcon size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{vm.label}</Pill>
         {room.tags.includes("plug") && <Pill><Plug size={10} style={{ marginRight: 4, verticalAlign: -1 }} />plugs</Pill>}
         {room.tags.includes("wifi+") && <Pill><Wifi size={10} style={{ marginRight: 4, verticalAlign: -1 }} />wifi+</Pill>}
-        {canCheckIn && (
-          <button onClick={() => setQrOpen(true)} title="Show this room's door QR on screen" style={{ marginLeft: "auto", background: "rgba(196,181,253,0.06)", border: "1px solid rgba(196,181,253,0.16)", color: "#D2C8F5", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
-            <QrCode size={11} /> check-in QR
-          </button>
-        )}
       </div>
-      {qrOpen && <Suspense fallback={null}><CheckInQr roomId={room.id} roomName={room.name} onClose={() => setQrOpen(false)} /></Suspense>}
-
-      {room.csiEnabled && <MeshRadar mesh={mesh} />}
-      {room.csiEnabled && <DoorCounter door={door} mesh={mesh} checkedIn={hereCount} />}
-      {room.csiEnabled && (
-        <a href="/lab" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, textDecoration: "none", background: "linear-gradient(180deg, rgba(167,139,250,0.12), rgba(167,139,250,0.04))", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 14, padding: "10px 12px", color: "#F4F1FF" }}>
-          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 14 }}>Open the Sensing Lab <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0A0812", background: "#F5B544", borderRadius: 999, padding: "1px 7px", marginLeft: 4, verticalAlign: 1 }}>SIMULATION</span></span>
-            <span style={{ fontSize: 12, color: "#A39CC4", lineHeight: 1.4 }}>This room's 4-board setup as a virtual lab: move 0–10 people and watch all 12 links react.</span>
-          </span>
-          <ChevronRight size={18} color="#C4B5FD" style={{ flexShrink: 0 }} />
-        </a>
-      )}
-      {room.csiEnabled && <DemoRoomCsiBadge mesh={mesh} onOpenDevDashboard={onOpenDevDashboard} />}
 
       {!room.bookable ? (
         <div style={{ marginTop: 4, background: "rgba(196,181,253,0.03)", border: "1px solid rgba(196,181,253,0.07)", borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: "#A39CC4", textAlign: "center" }}>
@@ -563,7 +406,7 @@ function RoomCard({ room, status, prefs, booking, onBook, hasActiveBooking, high
           border: "none", borderRadius: 12, padding: "10px 14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14,
           cursor: canBook ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         }}>
-          {status.closed ? "closed right now" : !status.free ? "occupied right now" : hasActiveBooking ? "end current booking first" : <>Lock it in <ChevronRight size={15} /></>}
+          {status.closed ? "closed right now" : !status.free ? "class going on" : hasActiveBooking ? "end current booking first" : <>Lock it in <ChevronRight size={15} /></>}
         </button>
       )}
     </div>
@@ -678,36 +521,6 @@ function GhostSlotInfo() {
 }
 
 // =========================================================================
-// DEMO ROOM — CSI DEVELOPER DASHBOARD (debug view, separate from student UI)
-// =========================================================================
-function CsiDevDashboard({ csi, mesh, onClose }) {
-  const row = (label, value) => (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(196,181,253,0.06)", fontSize: 12.5 }}>
-      <span style={{ color: "#A39CC4" }}>{label}</span>
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#F4F1FF" }}>{value}</span>
-    </div>
-  );
-  return (
-    <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 30 }} />
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "min(100vw, 460px)", background: "#100D1B", borderRadius: "20px 20px 0 0", zIndex: 35, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,0,0,0.6)" }}>
-        <div style={{ padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>🛠 Demo Room — Wi-Fi mesh (developer view)</div>
-            <button onClick={onClose} style={{ background: "none", border: "none", color: "#A39CC4", cursor: "pointer" }}><X size={18} /></button>
-          </div>
-          <div style={{ marginBottom: 4, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: "#A39CC4", fontWeight: 700 }}>People-count mesh (4 × ESP32-S3)</div>
-          <MeshDevRows mesh={mesh} row={row} />
-          <div style={{ marginTop: 10, fontSize: 11, color: "#857DA8", lineHeight: 1.5 }}>
-            The count comes from a model calibrated in this room on labelled recordings; its held-out accuracy is shown on the radar.
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// =========================================================================
 // LOGIN SCREEN
 // =========================================================================
 
@@ -715,7 +528,6 @@ const SORT_OPTIONS = [
   { id: "bestMatch", label: "Best Match", emoji: "✨" },
   { id: "freeFirst", label: "Free First", emoji: "🟢" },
   { id: "nearest", label: "Nearest", emoji: "🚶" },
-  { id: "leastUsed", label: "Least Busy", emoji: "👻" },
   { id: "largest", label: "Largest", emoji: "📐" },
 ];
 const ROOM_TYPE_OPTIONS = [
@@ -877,18 +689,13 @@ export default function GhostSlot() {
   const lastTap = useRef({});
   const once = (k, ms = 800) => { const n = Date.now(); if (n - (lastTap.current[k] || 0) < ms) return false; lastTap.current[k] = n; return true; };
   const queryLock = useRef(false);
-  // Where you are on campus (GPS, picked, map tap or a door QR).
+  // Where you are on campus (GPS, picked, map tap or a map link).
   const [you, setYouRaw] = useState(null);
   const [mapFocusId, setMapFocusId] = useState(null);
   const [anchorsVersion, setAnchorsVersion] = useState(0);
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const restoredFor = useRef(null);
-  const [karma, setKarma] = useState(0);
-  // Real per-account counters (demo accounts start with sample numbers).
-  const [stats, setStats] = useState(FRESH_STATS);
   const [extraBooked, setExtraBooked] = useState(0);
-  const [pinged, setPinged] = useState({});
-  const [showNotifs, setShowNotifs] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 800);
   useEffect(() => { const h = () => setWindowWidth(window.innerWidth); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h); }, []);
@@ -903,19 +710,17 @@ export default function GhostSlot() {
   const [deleteErr, setDeleteErr] = useState("");
   const role = ROLE_TABS[currentUser?.role] ? currentUser.role : "student";
   const isStudent = role === "student";
-  const showKarma = isStudent && !currentUser?.isMinor;
   // When someone signs in (or a session is restored), open their role's home
   // and load the matching demo timetable (classes taken vs classes taught).
   useEffect(() => {
     if (!currentUser) return;
     setTab(ROLE_TABS[role][0].id);
     setTtSubTab("mine");
-    setShowNotifs(false);
-    // Restore this person's saved timetable, booking and karma (this browser).
+    // Restore this person's saved timetable and booking (this browser).
     const saved = loadState(currentUser.id);
     const savedSlots = saved && cleanSlots(saved.mySlots);
     const savedRooms = saved && cleanRoomSlots(saved.roomSlots);
-    // Only the shared demo accounts get the sample timetable/karma; a new sign-up starts empty.
+    // Only the shared demo accounts get the sample timetable; a new sign-up starts empty.
     const demo = !!currentUser.isDemo;
     setMySlots(savedSlots || (demo ? (role === "faculty" ? SEED_TEACHING_SLOTS : SEED_MY_SLOTS) : []));
     let b = saved && saved.booking;
@@ -926,10 +731,8 @@ export default function GhostSlot() {
     setRoomSlots(tidy);
     setBooking(bookingOk ? b : null);
     bookingRef.current = bookingOk ? b : null;
-    setKarma(saved && Number.isFinite(saved.karma) ? saved.karma : (demo ? 74 : 0));
-    setStats(cleanStats(saved && saved.stats) || (demo ? DEMO_STATS : FRESH_STATS));
     setExtraBooked(0);
-    // Where you are: a fresh door scan wins over the saved spot.
+    // Where you are: a fresh map link (/?at=<room>) wins over the saved spot.
     let loc = loadLocation(currentUser.id);
     try {
       const at = sessionStorage.getItem("gs.pendingAt");
@@ -937,7 +740,6 @@ export default function GhostSlot() {
         sessionStorage.removeItem("gs.pendingAt");
         const place = findPlace(placeList(ROOM_META), at);
         if (place) { loc = { x: place.x, y: place.y, label: place.label, placeId: place.id, source: "qr", at: Date.now() }; setToast(`You're at ${place.label}. Showing the closest free spots from here.`); }
-        if (ROOM_NAME[at] && role !== "facilities") setPendingQrRoom(at); // a room's door QR also checks you in
       }
     } catch { /* ignore */ }
     setYouRaw(loc);
@@ -977,20 +779,11 @@ export default function GhostSlot() {
   // Save on every change (only after this user's state has been restored).
   useEffect(() => {
     if (!currentUser || restoredFor.current !== currentUser.id) return;
-    saveState(currentUser.id, { mySlots, roomSlots, booking: bookingRaw, karma, stats });
-  }, [currentUser?.id, mySlots, roomSlots, bookingRaw, karma, stats]);
+    saveState(currentUser.id, { mySlots, roomSlots, booking: bookingRaw });
+  }, [currentUser?.id, mySlots, roomSlots, bookingRaw]);
   const [ttSubTab, setTtSubTab] = useState("mine");
   const [myCsvSummary, setMyCsvSummary] = useState(null);
   const [roomCsvSummary, setRoomCsvSummary] = useState(null);
-
-  // Demo Room CSI status — polled from the backend (server/csi.js). Never
-  // generated client-side; if the backend is unreachable this simply stays
-  // null and the UI shows "CSI status unavailable" rather than inventing a state.
-  const csiStatus = null; // the retired 2-board CSI pair; the 4-board mesh below replaces it
-  const [showCsiDevDashboard, setShowCsiDevDashboard] = useState(false);
-  // People count from the 4-board CSI mesh (server/csimesh.js). Same rule: never invented here.
-  const meshStatus = useMeshStatus();
-  const doorStatus = useDoorStatus();
 
   // Release the room when the booking's time is up (checked every tick, so a
   // phone that slept through the end time releases it as soon as it wakes).
@@ -1003,77 +796,6 @@ export default function GhostSlot() {
     setToast("Time's up. Room released automatically. Vacate before the next class catches you red-handed.");
   }, [bookingRaw, nowTick]);
 
-  // ---- Room check-in (server/checkin.js). Counts come from the server; names never do.
-  const [checkins, setCheckins] = useState({ mine: null, counts: {} });
-  const [pendingQrRoom, setPendingQrRoom] = useState(null);
-  const loadCheckins = () => api("/checkins").then((r) => setCheckins({ mine: r.mine || null, counts: r.counts || {} })).catch(() => {});
-  useEffect(() => {
-    if (!currentUser) { setCheckins({ mine: null, counts: {} }); return; }
-    loadCheckins();
-    const t = setInterval(loadCheckins, 15000);
-    return () => clearInterval(t);
-  }, [currentUser?.id]);
-  async function checkIn(roomId, method) {
-    if (role === "facilities" || !once(`checkin:${roomId}`, 1500)) return;
-    const b = bookingRef.current;
-    const forBooking = !!b && b.roomId === roomId;
-    const minutes = forBooking ? Math.min(180, Math.max(15, Math.ceil((b.endsAt - Date.now()) / 60000))) : 60;
-    try {
-      const r = await api("/checkins", { method: "POST", body: { roomId, minutes, method } });
-      setCheckins({ mine: r.mine || null, counts: r.counts || {} });
-      const name = ROOM_NAME[roomId] || roomId;
-      const via = method === "qr" ? " via the door QR" : "";
-      if (forBooking && !b.checkedIn) {
-        const nb = { ...b, checkedIn: true };
-        bookingRef.current = nb;
-        setBooking(nb);
-        if (showKarma) { setKarma((k) => k + 2); setStats((st) => ({ ...st, onTime: st.onTime + 1 })); }
-        setToast(`Checked in at ${name}${via}. You actually showed up${showKarma ? " · +2 karma" : ""}.`);
-      } else {
-        const n = (r.counts || {})[roomId] || 1;
-        setToast(`Checked in at ${name}${via}. ${n === 1 ? "You're the only one here." : `${n} people here now.`}`);
-      }
-    } catch (e) {
-      setToast(e.status === 400 ? "That room can't be checked into." : e.message || "Couldn't check in. Try again.");
-    }
-  }
-  async function checkOut(silent = false) {
-    try {
-      const r = await api("/checkins/me", { method: "DELETE" });
-      setCheckins({ mine: null, counts: r.counts || {} });
-      if (!silent) setToast("Checked out. The room count is updated for everyone.");
-    } catch { if (!silent) setToast("Couldn't check out. Try again."); }
-  }
-  // In-app scanner. scan = null | { forBooking: bool }
-  const [scan, setScan] = useState(null);
-  function onScannedRoom(id) {
-    const b = bookingRef.current;
-    const wantBooking = scan && scan.forBooking;
-    setScan(null);
-    if (wantBooking && b && b.roomId !== id) {
-      setToast(`That's the QR for ${ROOM_NAME[id] || id}. Your booking is ${b.roomName}: scan the QR on that door.`);
-      return;
-    }
-    checkIn(id, "qr");
-  }
-  // A scanned door QR (remembered through login) checks you in.
-  useEffect(() => {
-    if (!currentUser || !pendingQrRoom) return;
-    const id = pendingQrRoom;
-    setPendingQrRoom(null);
-    checkIn(id, "qr");
-  }, [currentUser?.id, pendingQrRoom]);
-  // Booked but never checked in: release it after the grace period.
-  useEffect(() => {
-    const b = bookingRaw;
-    if (!b || b.checkedIn || !b.checkInBy || nowTick < b.checkInBy) return;
-    setRoomSlots((rs) => ({ ...rs, [b.roomId]: (rs[b.roomId] || []).filter((s) => s.id !== b.slotId) }));
-    setBooking(null);
-    bookingRef.current = null;
-    if (showKarma) { setKarma((k) => Math.max(0, k - 5)); setStats((st) => ({ ...st, ghosted: st.ghosted + 1 })); }
-    setToast(`No check-in within ${CHECKIN_GRACE_MIN} min, so ${b.roomName} went back to everyone. No ghost bookings 👻`);
-  }, [bookingRaw, nowTick]);
-
   // Online / offline banner.
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
@@ -1081,7 +803,7 @@ export default function GhostSlot() {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
-  // A door QR opens GhostSlot as /?at=<place id>. Remember it (it may have to
+  // A link like /?at=<room id> sets "you are here". Remember it (it may have to
   // wait for login), then tidy the address bar.
   useEffect(() => {
     try {
@@ -1116,7 +838,6 @@ export default function GhostSlot() {
       if (prefs.capacity === 1 && room.capacity > 20) return false;
       if (prefs.capacity === 21 && (room.capacity < 21 || room.capacity > 60)) return false;
       if (prefs.capacity === 61 && room.capacity < 61) return false;
-      if (prefs.category && room.category !== prefs.category) return false;
       if (prefs.location && prefs.location !== "Anywhere" && room.block !== prefs.location) return false;
       if (prefs.roomType && room.type !== prefs.roomType) return false;
       if (prefs.walkTime) {
@@ -1166,17 +887,6 @@ export default function GhostSlot() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 2);
   }, [roomsWithStatus, prefs]);
-
-  // dynamic prediction — replaces old hardcoded chart data
-  const forecastHours = [10, 11, 12, 13, 14, 15, 16, 17];
-  const forecastData = useMemo(
-    () => forecastHours.map((h) => ({ hour: hourLabel(h), risk: calculateShortageRisk(h * 60, day, roomSlots) })),
-    [day, roomSlots]
-  );
-  const peakSlot = useMemo(() => forecastData.reduce((max, d) => (d.risk > max.risk ? d : max), forecastData[0]), [forecastData]);
-  const underused = useMemo(() => getUnderusedRooms(TIMETABLE_ROOMS, 3), []);
-  const avgUtil = useMemo(() => Math.round(TIMETABLE_ROOMS.reduce((a, r) => a + r.util7d, 0) / TIMETABLE_ROOMS.length), []);
-  const underusedCount = useMemo(() => TIMETABLE_ROOMS.filter((r) => r.util7d < 25).length, []);
 
   function applyParsedQuery(parsed) {
     setPrefs((p) => ({
@@ -1233,7 +943,6 @@ export default function GhostSlot() {
   }
 
   function handleBook(room, status, wanted, subject) {
-    if (role === "facilities") return; // facilities staff don't book rooms
     if (!once("book", 1200)) return;   // double tap / double click
     if (bookingRef.current) { setToast("You already have a room. End it from the bar at the top first."); return; }
     if (room.bookable === false) { setToast(`${room.name} is walk-in only. No booking needed.`); return; }
@@ -1246,22 +955,19 @@ export default function GhostSlot() {
     const slotId = `book_${Date.now()}`;
     const label = role === "faculty" ? `${subject || "Extra class"} (you)` : "Reserved (you)";
     setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: label }] }));
-    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000, checkInBy: Date.now() + CHECKIN_GRACE_MIN * 60 * 1000, checkedIn: false };
+    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000 };
     bookingRef.current = nb;
     setBooking(nb);
     if (role === "faculty") setExtraBooked((n) => n + 1);
-    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}. Check in within ${CHECKIN_GRACE_MIN} min.` : `${room.name} is yours for ${fmtMin(duration)}. Check in within ${CHECKIN_GRACE_MIN} min or it goes back to everyone.`);
+    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}.` : `${room.name} is yours for ${fmtMin(duration)}, till ${toHHMM(endMin)}.`);
   }
   function endEarly() {
     if (!booking || !once("end", 1000)) return;
-    if (checkins.mine && checkins.mine.roomId === booking.roomId) checkOut(true);
     bookingRef.current = null;
     setRoomSlots((rs) => ({ ...rs, [booking.roomId]: (rs[booking.roomId] || []).filter((s) => s.id !== booking.slotId) }));
     setBooking(null);
-    if (showKarma) { setKarma((k) => k + 5); setStats((st) => ({ ...st, early: st.early + 1 })); setToast("Ended early. +5 room karma — the campus thanks you."); }
-    else setToast("Room released early. It's back on the map for everyone.");
+    setToast("Room released early. It's back on the list for everyone.");
   }
-  function ping(person) { if (pinged[person] || !once(`ping:${person}`)) return; setPinged((p) => ({ ...p, [person]: true })); setToast(`${person} has been pinged. No cap, they'll probably see it eventually.`); }
 
   function addMySlot(slot) { setMySlots((s) => [...s, slot]); setToast("Added to your timetable. The AI now knows your business."); }
   function removeMySlot(id) { setMySlots((s) => s.filter((x) => x.id !== id)); }
@@ -1377,9 +1083,8 @@ export default function GhostSlot() {
     const r = u.role || "student";
     setToast(how === "signup"
       ? `Account made, ${u.name}. Welcome to GhostSlot.`
-      : r === "student" ? `Welcome back, ${u.name}. Try not to ghost your bookings this time.`
       : r === "faculty" ? `Welcome back, ${u.name}. Here's your teaching day.`
-      : `Welcome back, ${u.name}. Here's what needs fixing.`);
+      : `Welcome back, ${u.name}. Here are the free rooms right now.`);
   }
   async function handleLogout(everywhere = false) {
     try { await api(everywhere ? "/auth/logout-all" : "/auth/logout", { method: "POST" }); } catch { /* session already gone */ }
@@ -1411,9 +1116,7 @@ export default function GhostSlot() {
         walk: room.walk,
         vibe: room.vibe,
         tags: room.tags,
-        category: room.category,
         bookable: room.bookable !== false,
-        crowdPct: typeof status.crowd === "number" && !status.closed ? status.crowd : null,
         closed: !!status.closed,
         free: status.free,
         freeForMin: status.free ? status.freeFor : null,
@@ -1428,7 +1131,6 @@ export default function GhostSlot() {
   function handleViewSpaceFromAI(roomId) {
     const match = ROOM_META.find((r) => r.id === roomId);
     if (!match) return;
-    if (!isStudent) { setTab("map"); return; }
     setTab("find");
     setShowFilters(false);
     setPrefs((p) => ({ ...DEFAULT_PREFS, location: match.block, sortBy: p.sortBy }));
@@ -1459,15 +1161,6 @@ export default function GhostSlot() {
         input::placeholder { color: #857DA8; }
         @keyframes gs-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .gs-spin { animation: gs-spin 0.9s linear infinite; }
-        @keyframes gs-scan { 0% { top: 8%; } 50% { top: 90%; } 100% { top: 8%; } }
-        .gs-scanline { animation: gs-scan 2.2s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .gs-scanline { animation: none; top: 50%; } }
-        @media print {
-          body * { visibility: hidden !important; }
-          .gs-qr-grid, .gs-qr-grid * { visibility: visible !important; }
-          .gs-qr-grid { position: absolute; left: 0; top: 0; width: 100%; grid-template-columns: repeat(3, 1fr) !important; }
-          .gs-qr-card { break-inside: avoid; border: 1px solid #ccc; }
-        }
         /* ── mobile defaults ── */
         .gs-root { max-width: 460px; margin: 0 auto; padding-bottom: 84px; }
         .gs-sidebar { display: none; }
@@ -1482,9 +1175,7 @@ export default function GhostSlot() {
           .gs-bottom-nav { display: none !important; }
           .gs-tab-wrap { padding: 0 32px 32px; flex: 1; }
           .gs-room-grid { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; flex-direction: unset !important; }
-          .gs-predict-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
           .gs-timetable-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-          .gs-squad-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         }
       `}</style>
 
@@ -1495,7 +1186,7 @@ export default function GhostSlot() {
             <BrandMark size={34} />
             <Wordmark size={20} />
           </div>
-          <div style={{ fontSize: 10.5, color: "#4E4670" }}>campus space intelligence</div>
+          <div style={{ fontSize: 10.5, color: "#4E4670" }}>free rooms, from the timetable</div>
         </div>
         <nav style={{ padding: "14px 12px", flex: 1 }}>
           {navItems.map(n => { const Icon = n.icon; const active = view === n.id; return (
@@ -1508,7 +1199,6 @@ export default function GhostSlot() {
           <div style={{ fontWeight: 700, fontSize: 13, color: "#F4F1FF" }}>{currentUser.name}</div>
           <div style={{ fontSize: 11, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>{currentUser.roll} · {ROLE_META[currentUser.role]?.label || "Student"}</div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
             <button onClick={() => handleLogout()} style={{ background: "none", border: "none", color: "#FF8B8B", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}><LogOut size={11} /> logout</button>
           </div>
         </div>
@@ -1523,11 +1213,6 @@ export default function GhostSlot() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <TimeDayPicker {...pickerProps} />
-          {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
-          {role !== "facilities" && <button onClick={() => setScan({ forBooking: false })} aria-label="Scan a door QR to check in" title="Scan a door QR to check in" style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ScanLine size={16} color="#F4F1FF" /></button>}
-          <button onClick={() => setShowNotifs(s => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
-            <Bell size={16} color="#F4F1FF" />{currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
-          </button>
         </div>
       </div>
       {/* mobile topbar */}
@@ -1537,14 +1222,7 @@ export default function GhostSlot() {
             <BrandMark size={34} />
             <Wordmark size={20} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {showKarma && <Pill tone="lime"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />{karma}</Pill>}
-            {role !== "facilities" && <button onClick={() => setScan({ forBooking: false })} aria-label="Scan a door QR to check in" title="Scan a door QR to check in" style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ScanLine size={16} color="#F4F1FF" /></button>}
-            <button onClick={() => setShowNotifs((s) => !s)} style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
-              <Bell size={16} color="#F4F1FF" />
-              {currentUser.isDemo && <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: 999, background: "#FF6B6B" }} />}
-            </button>
-          </div>
+          <button onClick={() => handleLogout()} aria-label="Log out" style={{ background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><LogOut size={15} color="#FF8B8B" /></button>
         </div>
         <div style={{ fontSize: 12.5, color: "#A39CC4", marginTop: 6, marginBottom: 8 }}>{roleMeta.tagline}</div>
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -1558,58 +1236,19 @@ export default function GhostSlot() {
         <TimeDayPicker {...pickerProps} />
       </div>{/* end gs-mobile-topbar */}
 
-      {scan && (
-        <Suspense fallback={null}>
-          <QrScanner knownRooms={ROOM_NAME}
-            title={scan.forBooking && booking ? `Scan the QR on ${booking.roomName}'s door` : "Scan a room's door QR"}
-            hint={scan.forBooking ? `Check in within the ${CHECKIN_GRACE_MIN} min grace time or the room goes back to everyone.` : undefined}
-            onRoom={onScannedRoom}
-            onClose={() => setScan(null)}
-            onFallback={scan.forBooking && booking ? () => { const id = booking.roomId; setScan(null); checkIn(id, "tap"); } : undefined} />
-        </Suspense>
-      )}
-      {showNotifs && (
-        <div style={{ margin: "0 18px 10px", background: "#120F1E", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 16, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-          {!currentUser.isDemo && <div style={{ fontSize: 12.5, color: "#A39CC4", lineHeight: 1.5 }}>No notifications yet. Book a room or add your timetable and updates will show up here.</div>}
-          {currentUser.isDemo && (ROLE_NOTIFS[role] || ROLE_NOTIFS.student).map((n) => (
-            <div key={n.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <Sparkles size={13} color="#E9E3FF" style={{ marginTop: 2, flexShrink: 0 }} />
-              <div><div style={{ fontSize: 13, lineHeight: 1.4 }}>{n.text}</div><div style={{ fontSize: 10.5, color: "#857DA8", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{n.time}</div></div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {booking && (
         <div style={{ margin: "0 18px 14px", background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: "#0A0812", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 10px 30px rgba(0,0,0,.45)", borderRadius: 16, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 11, color: "rgba(10,8,18,0.6)", fontFamily: "'JetBrains Mono', monospace" }}>RESERVED BY YOU</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>{booking.roomName}</div>
-            {booking.checkInBy && !booking.checkedIn && (
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#5B2A00", marginTop: 2 }}>Check in within {fmt(Math.max(0, Math.round((booking.checkInBy - nowTick) / 1000)))} · door QR</div>
-            )}
-            {booking.checkedIn && <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(10,8,18,0.7)", marginTop: 2 }}>✓ Checked in</div>}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 500 }}>{fmt(booking.secondsLeft)}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4, justifyContent: "flex-end" }}>
               <button onClick={() => { setMapFocusId(booking.roomId); setTab("map"); }} aria-label="Directions to my room" style={{ fontSize: 11, background: "rgba(10,8,18,0.12)", border: "1px solid rgba(10,8,18,0.35)", color: "#0A0812", borderRadius: 8, padding: "4px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3, fontWeight: 600 }}><Navigation size={11} /> Go</button>
-              {booking.checkInBy && !booking.checkedIn && (
-                <button onClick={() => setScan({ forBooking: true })} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#C4B5FD", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}><ScanLine size={11} style={{ marginRight: 4, verticalAlign: -2 }} />Check in</button>
-              )}
               <button onClick={endEarly} style={{ fontSize: 11, background: "#0A0812", border: "none", color: "#F4F1FF", borderRadius: 8, padding: "4px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>I'm out</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {checkins.mine && !(booking && booking.roomId === checkins.mine.roomId) && (
-        <div style={{ margin: "0 18px 14px", background: "rgba(61,220,151,0.08)", border: "1px solid rgba(61,220,151,0.3)", borderRadius: 14, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 12.5, color: "#E9E3FF" }}>
-            <span style={{ color: "#3DDC97", fontWeight: 700 }}>✓ Checked in</span> at <b>{ROOM_NAME[checkins.mine.roomId] || checkins.mine.roomId}</b>
-            {checkins.mine.method === "qr" && <span style={{ color: "#A39CC4" }}> · via door QR</span>}
-          </div>
-          <button onClick={() => checkOut()} style={{ fontSize: 11, background: "rgba(196,181,253,0.08)", border: "1px solid rgba(196,181,253,0.2)", color: "#E9E3FF", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Check out</button>
         </div>
       )}
 
@@ -1670,14 +1309,6 @@ export default function GhostSlot() {
           </div>
 
           <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-            {CATEGORIES.map((c) => (
-              <button key={String(c.id)} onClick={() => setPrefs((p) => ({ ...p, category: c.id }))} style={{ flexShrink: 0, background: prefs.category === c.id ? "#E9E3FF" : "#120F1E", color: prefs.category === c.id ? "#07060C" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                {c.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {DURATION_PRESETS.map((d) => (
               <button key={d} onClick={() => setPrefs((p) => ({ ...p, duration: d }))} style={{ flexShrink: 0, background: prefs.duration === d ? "#C4B5FD" : "#120F1E", color: prefs.duration === d ? "#0A0812" : "#F4F1FF", border: "1px solid rgba(196,181,253,0.08)", borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 {d} min
@@ -1718,10 +1349,6 @@ export default function GhostSlot() {
               onClose={() => setShowFilters(false)}
               activeCount={activeFilterCount}
             />
-          )}
-
-          {showCsiDevDashboard && (
-            <CsiDevDashboard csi={csiStatus} mesh={meshStatus} onClose={() => setShowCsiDevDashboard(false)} />
           )}
 
           {matchMyFreeTime && myAvailableNow < (prefs.duration || 30) && (
@@ -1793,7 +1420,7 @@ export default function GhostSlot() {
                   <div key={room.id} style={{ background: "#120F1E", borderRadius: 12, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{room.name}</div>
-                      <div style={{ fontSize: 11, color: "#857DA8" }}>{room.sensing === "wifi" ? statusMeta(room, status, prefs, null).label : status.free ? `free ${fmtMin(status.freeFor)}` : status.closed ? `closed till ${status.busyUntil}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
+                      <div style={{ fontSize: 11, color: "#857DA8" }}>{status.free ? `free ${fmtMin(status.freeFor)}` : status.closed ? `closed till ${status.busyUntil}` : `busy till ${status.busyUntil}`} · {room.walk}</div>
                     </div>
                     <Pill tone="lime">{score}%</Pill>
                   </div>
@@ -1806,7 +1433,7 @@ export default function GhostSlot() {
             <div className="gs-room-grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: 11.5, color: "#857DA8", fontFamily: "'JetBrains Mono', monospace", gridColumn: "1 / -1" }}>ALL ROOMS</div>
               {restOfList.map(({ room, status, score }) => (
-                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} csi={room.csiEnabled ? csiStatus : undefined} mesh={room.csiEnabled ? meshStatus : undefined} door={room.csiEnabled ? doorStatus : undefined} onOpenDevDashboard={room.csiEnabled ? () => setShowCsiDevDashboard(true) : undefined} hereCount={checkins.counts[room.id] || 0} />
+                <RoomCard key={room.id} room={room} status={status} prefs={prefs} booking={booking} onBook={handleBook} hasActiveBooking={!!booking} scoreBadge={score} />
               ))}
             </div>
           )}
@@ -1819,21 +1446,14 @@ export default function GhostSlot() {
           <CampusMap
             rooms={roomsWithStatus}
             booking={booking}
-            csi={meshStatus}
-            onBook={role === "facilities" ? undefined : handleBook}
-            onShowInFind={isStudent ? (room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, category: room.category, sortBy: p.sortBy })); } : undefined}
+            onBook={handleBook}
+            onShowInFind={(room) => { setTab("find"); setPrefs((p) => ({ ...DEFAULT_PREFS, location: room.block, sortBy: p.sortBy })); }}
             you={you}
             onSetYou={setYou}
             places={places}
             focusId={mapFocusId}
             anchorsVersion={anchorsVersion}
           />
-          {role === "facilities" && (
-            <>
-              <GpsCalibration places={places} onChanged={() => setAnchorsVersion((v) => v + 1)} />
-              <DoorQrCodes rooms={ROOM_META} />
-            </>
-          )}
         </div>
       )}
 
@@ -1904,74 +1524,10 @@ export default function GhostSlot() {
         </div>
       )}
 
-      {view === "predict" && (
-        <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>AI-assisted shortage forecast</div>
-            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>Forecast combines timetable occupancy, historical utilization and current demand signals.</div>
-          </div>
-          <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 190 }}>
-            <ForecastChart data={forecastData} />
-          </div>
-          <div style={{ background: "#120F1E", border: "1px solid rgba(255,107,107,0.25)", borderRadius: 14, padding: 12, fontSize: 12.5, color: "#CFC7EC", display: "flex", gap: 8 }}>
-            <Sparkles size={16} color="#FF8B8B" style={{ flexShrink: 0 }} />
-            <span><b style={{ color: "#FF8B8B" }}>{peakSlot.hour} is about to be a bloodbath</b> — {peakSlot.risk}% shortage risk. Book your spot before then or accept your fate on the canteen steps.</span>
-          </div>
-
-          <div style={{ background: "#120F1E", borderRadius: 16, padding: 14, border: "1px solid rgba(196,181,253,0.07)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#E9E3FF", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>CAMPUS CAPACITY</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{TIMETABLE_ROOMS.length}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>rooms tracked</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{avgUtil}%</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>avg utilization</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{underusedCount}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>underused rooms</div></div>
-              <div style={{ flex: "1 1 40%" }}><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{peakSlot.hour}</div><div style={{ fontSize: 10.5, color: "#A39CC4" }}>peak shortage</div></div>
-            </div>
-            <div style={{ fontSize: 12, color: "#CFC7EC", marginTop: 10, lineHeight: 1.4 }}>
-              <Percent size={11} style={{ marginRight: 4, verticalAlign: -1 }} color="#E9E3FF" />
-              <b style={{ color: "#E9E3FF" }}>{100 - avgUtil}%</b> of tracked room-capacity sits unused in an average week. Use what's already built before asking for more.
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 16 }}>Most ghosted rooms</div>
-            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2, marginBottom: 8 }}>These spaces have capacity that's frequently left unused.</div>
-            <div style={{ background: "#120F1E", borderRadius: 16, padding: 12, height: 160 }}>
-              <UnderusedChart data={underused} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === "twin" && <Twin showLog={role !== "facilities"} />}
-
       {view === "classes" && (
         <FacultyHome user={currentUser} day={day} time={time} mySlots={mySlots} rooms={roomsWithStatus} booking={booking}
           onBook={(room, duration, subject) => { const st = roomsWithStatus.find((x) => x.room.id === room.id)?.status; if (st?.free) handleBook(room, st, duration, subject); }}
           onOpenTimetable={() => { setTab("timetable"); setTtSubTab("mine"); }} />
-      )}
-
-      {view === "ops" && <OpsHome user={currentUser} onOpenAnalytics={() => setTab("twin")} />}
-
-      {view === "squad" && (
-        <div style={{ padding: "0 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 12.5, color: "#A39CC4" }}>People in your batch who are also free right now, allegedly.</div>
-          {!currentUser.isDemo && (
-            <div style={{ background: "#120F1E", borderRadius: 16, padding: 14, border: "1px dashed rgba(196,181,253,0.18)", fontSize: 12.5, color: "#A39CC4", lineHeight: 1.5 }}>
-              Your squad is empty for now. Once your batchmates join GhostSlot and add their timetables, the ones who are free when you are show up here.
-            </div>
-          )}
-          {currentUser.isDemo && SQUAD.map((s) => (
-            <div key={s.name} style={{ background: "#120F1E", borderRadius: 16, padding: 13, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(196,181,253,0.07)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 12, background: "#221C3B", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: "#D2C8F5" }}>{s.init}</div>
-                <div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.name}</div><div style={{ fontSize: 11.5, color: "#857DA8" }}>{s.free} · {s.slot}</div></div>
-              </div>
-              <button onClick={() => ping(s.name)} disabled={pinged[s.name]} style={{ background: pinged[s.name] ? "rgba(167,139,250,0.15)" : "#C4B5FD", color: pinged[s.name] ? "#E9E3FF" : "#07060C", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: pinged[s.name] ? "default" : "pointer" }}>
-                {pinged[s.name] ? "pinged ✓" : "ping"}
-              </button>
-            </div>
-          ))}
-        </div>
       )}
 
       {view === "profile" && (
@@ -1996,36 +1552,18 @@ export default function GhostSlot() {
               ))}
             </div>
           )}
-          {role === "facilities" && <StaffWorkLog department={currentUser.department} />}
-          {!isStudent ? null : currentUser.isMinor ? (
-            <div style={{ background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)", fontSize: 12, color: "#A39CC4", lineHeight: 1.5 }}>
-              Room karma, badges and booking-behaviour stats are switched off for under-18 accounts. India's DPDP Act doesn't allow behavioural tracking of children. Everything else works the same.
+          {isStudent && (
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{mySlots.length}</div>
+                <div style={{ fontSize: 11, color: "#A39CC4" }}>classes a week on your timetable</div>
+              </div>
+              <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{myFreeWindows.length}</div>
+                <div style={{ fontSize: 11, color: "#A39CC4" }}>free windows on {day}</div>
+              </div>
             </div>
-          ) : (<>
-          <div style={{ background: "linear-gradient(180deg, #1E1936, #100D1B)", borderRadius: 18, padding: 18, border: "1px solid rgba(196,181,253,0.07)" }}>
-            <div style={{ fontSize: 11.5, color: "#A39CC4", fontFamily: "'JetBrains Mono', monospace" }}>ROOM KARMA</div>
-            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: "#E9E3FF" }}>{karma}</div>
-            <div style={{ fontSize: 12, color: "#A39CC4", marginTop: 2 }}>{currentUser.isDemo ? "Top 12% of students who actually leave on time." : karma === 0 ? "Fresh start. Check in on time (+2) and leave early (+5) to build it up." : "Keep showing up on time to climb."}</div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{mySlots.length}</div>
-              <div style={{ fontSize: 11, color: "#A39CC4" }}>classes logged</div>
-            </div>
-            <div style={{ flex: 1, background: "#120F1E", borderRadius: 14, padding: 12, border: "1px solid rgba(196,181,253,0.07)" }}>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{stats.ghosted}</div>
-              <div style={{ fontSize: 11, color: "#A39CC4" }}>{stats.ghosted === 0 ? "ghosted bookings (clean record)" : stats.ghosted === 1 ? "ghosted booking (we see you)" : "ghosted bookings (we see you)"}</div>
-            </div>
-          </div>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>Badges</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {stats.early > 0 && <Pill tone="lime"><CheckCircle2 size={10} style={{ marginRight: 4, verticalAlign: -1 }} />early checkout x{stats.early}</Pill>}
-            {stats.onTime > 0 && <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />showed up on time x{stats.onTime}</Pill>}
-            {currentUser.isDemo && <Pill><Radar size={10} style={{ marginRight: 4, verticalAlign: -1 }} />library regular</Pill>}
-            {currentUser.isDemo && <Pill tone="coral"><Flame size={10} style={{ marginRight: 4, verticalAlign: -1 }} />1pm survivor</Pill>}
-            {!currentUser.isDemo && stats.early === 0 && stats.onTime === 0 && <div style={{ fontSize: 12, color: "#A39CC4" }}>No badges yet. Book a room and check in on time to earn your first one.</div>}
-          </div>
-          </>)}
+          )}
 
           {/* Security & privacy — what we hold about you, and the controls */}
           <div style={{ background: "linear-gradient(180deg, #1B1732, #100D1B)", border: "1px solid rgba(196,181,253,0.09)", borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 1px 0 rgba(196,181,253,.04) inset" }}>
@@ -2079,7 +1617,7 @@ export default function GhostSlot() {
 
       </div>{/* end gs-main */}
 
-      {role !== "facilities" && <Suspense fallback={null}><CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} /></Suspense>}
+      <Suspense fallback={null}><CampusAI buildContext={buildCampusContext} onViewSpace={handleViewSpaceFromAI} /></Suspense>
       {showPrivacy && <PrivacyNotice onClose={() => setShowPrivacy(false)} />}
 
       <nav className="gs-bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "#100D1B", borderTop: "1px solid rgba(196,181,253,0.07)", display: "flex", padding: "10px 4px 14px", zIndex: 10 }}>

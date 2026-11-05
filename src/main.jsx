@@ -11,13 +11,10 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import App from "./App.jsx";
 const GuardianConsent = lazy(() => import("./auth/GuardianConsent.jsx"));
-const Lab = lazy(() => import("./lab/Lab.jsx"));
-const Lab3D = lazy(() => import("./lab3d/Lab3D.jsx"));
 
 // /guardian#<code> is the parent/guardian consent page for under-18 students.
-// /lab is the Wi-Fi Sensing Lab (a labelled simulation of the 4-board mesh).
 const path = window.location.pathname.replace(/\/+$/, "");
-const Root = path === "/guardian" ? GuardianConsent : path === "/lab" ? Lab : path === "/lab3d" ? Lab3D : App;
+const Root = path === "/guardian" ? GuardianConsent : App;
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

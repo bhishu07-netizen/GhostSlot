@@ -44,19 +44,7 @@ function json429(message) {
   return (_req, res) => res.status(429).json({ error: "rate_limited", message });
 }
 
-// Facilities self sign-up needs this code from the estate office. If it
-// isn't configured, facilities sign-up is closed (accounts only via the demo
-// or created by an admin), so nobody can just pick "facilities".
-function facilitiesCodeOk(given) {
-  const expected = process.env.FACILITIES_ACCESS_CODE;
-  if (!expected || typeof given !== "string" || !given) return false;
-  const a = crypto.createHash("sha256").update(given.trim()).digest();
-  const b = crypto.createHash("sha256").update(expected).digest();
-  return crypto.timingSafeEqual(a, b);
-}
-
 const roleOf = (u) => (ROLES.includes(u?.role) ? u.role : "student");
-export const canManageTwin = (u) => roleOf(u) === "facilities";
 
 export function publicUser(u, extra = {}) {
   return {
@@ -65,7 +53,6 @@ export function publicUser(u, extra = {}) {
     name: u.name,
     role: roleOf(u),
     department: u.department || null,
-    canManageTwin: canManageTwin(u),
     ageVerified: !!u.age_verified_adult,
     isMinor: !!u.is_minor,
     guardian: u.is_minor ? { name: u.guardian_name, relation: u.guardian_relation, consentAt: u.guardian_consent_at } : null,
@@ -107,7 +94,7 @@ export function buildAuth(store) {
         return res.status(401).json({ error: "not_signed_in" });
       }
       const user = await store.findUserById(session.user_id);
-      if (!user) return res.status(401).json({ error: "not_signed_in" });
+      if (!user || !ROLES.includes(user.role || "student")) return res.status(401).json({ error: "not_signed_in" });
       req.user = user;
       req.sessionHash = session.token_hash;
       next();
@@ -143,7 +130,6 @@ export function buildAuth(store) {
       // Kept for older clients: the student demo.
       demo: demoOn ? { roll: DEMO_ROLL, password: DEMO_PASSWORD } : null,
       demos: demoOn ? Object.fromEntries(DEMO_USERS.map((d) => [d.role, { roll: d.roll, password: DEMO_PASSWORD }])) : null,
-      facilitiesSignupOpen: Boolean(process.env.FACILITIES_ACCESS_CODE),
       ageGate: ageLockInfo(req),
     });
   });
@@ -160,7 +146,7 @@ export function buildAuth(store) {
     if (age > 100) return res.status(400).json({ error: "invalid_dob", message: "Please check the year you picked." });
 
     // Under-18 STUDENTS can join with a parent/guardian's verifiable consent
-    // (DPDP Act s.9). Faculty and facilities accounts stay 18+ only.
+    // (DPDP Act s.9). Faculty accounts stay 18+ only.
     const role = req.body?.role === undefined ? "student" : req.body.role;
     if (age < MIN_AGE && role === "student" && age >= 10) {
       const now = Date.now();
@@ -191,18 +177,14 @@ export function buildAuth(store) {
       if (spentAgeNonces.has(age.n)) return res.status(403).json({ error: "age_check_required", message: "Please complete the age check again." });
 
       const role = req.body?.role === undefined ? "student" : req.body.role;
-      if (!ROLES.includes(role)) return res.status(400).json({ error: "invalid_role", message: "Pick student, faculty or facilities staff." });
-      if (isMinor && role !== "student") return res.status(403).json({ error: "age_check_required", message: "Faculty and facilities accounts are for adults only." });
+      if (!ROLES.includes(role)) return res.status(400).json({ error: "invalid_role", message: "Pick student or faculty." });
+      if (isMinor && role !== "student") return res.status(403).json({ error: "age_check_required", message: "Faculty accounts are for adults only." });
       let department = null;
       if (role !== "student") {
         department = cleanText(req.body?.department, 40);
         if (!DEPARTMENTS[role].includes(department)) {
-          return res.status(400).json({ error: "invalid_department", message: role === "faculty" ? "Pick your department." : "Pick your team." });
+          return res.status(400).json({ error: "invalid_department", message: "Pick your department." });
         }
-      }
-      if (role === "facilities") {
-        if (!process.env.FACILITIES_ACCESS_CODE) return res.status(403).json({ error: "facilities_signup_closed", message: "Facilities sign-up is closed. Ask the estate office to create your account." });
-        if (!facilitiesCodeOk(req.body?.accessCode)) return res.status(403).json({ error: "bad_access_code", message: "That facilities access code isn't right. Get it from the estate office." });
       }
       const name = cleanText(req.body?.name, 60);
       const roll = cleanText(req.body?.roll, 15);
@@ -266,10 +248,12 @@ export function buildAuth(store) {
       // Always run one scrypt verification so "no such user" and "wrong
       // password" take the same time and return the same message.
       const ok = await verifyPassword(password, user ? user.password_hash : await dummyHash());
-      // A login must also match the role that was picked, so a facilities ID
+      // A login must also match the role that was picked, so a faculty ID
       // can't be used from the student screen (or the other way round).
+      // Accounts of a retired role (old facilities logins) can't sign in at all.
       // Same generic message, so the response doesn't reveal which role an ID has.
-      const roleOk = role === null || (ROLES.includes(role) && roleOf(user) === role);
+      const storedRoleOk = !!user && ROLES.includes(user.role || "student");
+      const roleOk = storedRoleOk && (role === null || (ROLES.includes(role) && roleOf(user) === role));
       if (!user || !ok || !roleOk) return res.status(401).json({ error: "invalid_credentials", message: "ID or password doesn't match for this role." });
 
       // Rotate: any session cookie the browser had is replaced by a fresh one.
@@ -362,7 +346,7 @@ export function buildAuth(store) {
       const session = await store.getSession(sha256(token));
       if (!session) { res.clearCookie(SESSION_COOKIE, baseCookie); return res.json({ user: null }); }
       const user = await store.findUserById(session.user_id);
-      if (!user) return res.json({ user: null });
+      if (!user || !ROLES.includes(user.role || "student")) return res.json({ user: null });
       const sessions = await store.countSessionsForUser(user.id);
       res.json({ user: publicUser(user, { activeSessions: sessions }) });
     } catch (err) { next(err); }
@@ -424,7 +408,6 @@ export const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "Ghost-Demo-2026";
 export const DEMO_USERS = [
   { role: "student", roll: DEMO_ROLL, name: "Aryan", department: null },
   { role: "faculty", roll: process.env.DEMO_FACULTY_ID || "E21045", name: "Dr. Meera Sharma", department: "CSE" },
-  { role: "facilities", roll: process.env.DEMO_FACILITIES_ID || "FMS2041", name: "Ravi Kumar", department: "Electrical" },
 ];
 const DEMO_IDS = new Set(DEMO_USERS.map((d) => d.roll.toLowerCase()));
 export function isDemoUser(u) {

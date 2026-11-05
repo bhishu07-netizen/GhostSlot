@@ -23,22 +23,13 @@ services:
         value: gemini-3.6-flash
       - key: GEMINI_PARSE_MODEL
         value: gemini-3.6-flash
-      # Required: accounts + Campus Twin live in Supabase (Render's free
+      # Required: accounts live in Supabase (Render's free
       # disk is wiped on every deploy). Paste both from the Supabase dashboard:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: CSI_DEVICE_KEY
-        generateValue: true
       # Demo login for judges is shown on the login screen. Set DEMO_PASSWORD
       # to something easy to type (default: Ghost-Demo-2026).
       - key: DEMO_PASSWORD
         sync: false
-      # Campus Twin: assumed electricity tariff for the ₹-wasted estimate.
-      - key: TWIN_TARIFF_INR_PER_KWH
-        value: "8"
-      # Code facilities staff need to sign up (give it out via the estate office).
-      # Render generates a random one; see it under Environment.
-      - key: FACILITIES_ACCESS_CODE
-        generateValue: true

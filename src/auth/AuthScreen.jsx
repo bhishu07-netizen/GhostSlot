@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   User as UserIcon, Contact2, Lock, Eye, EyeOff, ShieldCheck, CalendarDays, ServerCog,
-  EyeOff as NoEye, Scale, CheckCircle2, ArrowLeft, ArrowRight, LockKeyhole, Loader2, Building2, KeyRound,
+  EyeOff as NoEye, Scale, CheckCircle2, ArrowLeft, ArrowRight, LockKeyhole, Loader2, Building2,
 } from "lucide-react";
 import { ROLE_META, ROLE_ORDER } from "./roles";
 import { api } from "../api";
@@ -86,7 +86,7 @@ function RolePicker({ role, setRole }) {
   return (
     <div>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.5, color: C.sub, marginBottom: 6 }}>I AM</div>
-      <div role="radiogroup" aria-label="Account type" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+      <div role="radiogroup" aria-label="Account type" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
         {ROLE_ORDER.map((id) => {
           const m = ROLE_META[id]; const Icon = m.icon; const on = role === id;
           return (
@@ -244,7 +244,7 @@ function AgeBlocked({ until, onDone }) {
         </div>
         <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>We can't create an account for you yet</div>
         <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.55, marginTop: 8 }}>
-          Faculty and facilities accounts are for people aged <b style={{ color: C.text }}>18 and over</b>. If you're an under-18 <b style={{ color: C.text }}>student</b>, sign up as a Student: a parent or guardian approves your account, as India's Digital Personal Data Protection Act, 2023 requires.
+          Faculty accounts are for people aged <b style={{ color: C.text }}>18 and over</b>. If you're an under-18 <b style={{ color: C.text }}>student</b>, sign up as a Student: a parent or guardian approves your account, as India's Digital Personal Data Protection Act, 2023 requires.
         </div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, fontSize: 11.5, color: C.green, background: "rgba(61,220,151,0.10)", border: "1px solid rgba(61,220,151,0.25)", borderRadius: 999, padding: "5px 10px" }}>
           <CheckCircle2 size={12} /> Nothing you entered was saved
@@ -262,13 +262,12 @@ function AgeBlocked({ until, onDone }) {
 // same thing before and after the app starts.
 const ABOUT_STEPS = [
   ["Say what you need", "Type it the way you'd say it, like \"quiet place near CSE for 90 minutes with charging\", or tap the filters."],
-  ["See the closest free match", "Free spaces are ranked by fit and by walking time from where you are. Set your spot by GPS, by picking a block, or by scanning the GhostSlot QR on a door."],
+  ["See the closest free match", "Free spaces are ranked by fit and by walking time from where you are. Set your spot by GPS, by picking a block, or by tapping the map."],
   ["Lock it in", "Book the room in one tap. A timer runs at the top, and the room frees itself when your time is up."],
 ];
 const ABOUT_ROLES = [
-  ["Students", "find a study room, library pod, café table or court, and book it"],
-  ["Faculty", "see their classes and find a free room for an extra lecture"],
-  ["Facilities staff", "spot rooms left powered on while empty, and print door QR codes"],
+  ["Students", "find an empty classroom, lab or library pod between classes, and book it"],
+  ["Faculty", "see their classes and find an empty room for an extra lecture"],
 ];
 function AboutGhostSlot() {
   const h2 = { fontFamily: "'Space Grotesk', sans-serif", fontSize: 17, fontWeight: 700, color: C.text, margin: "0 0 8px" };
@@ -277,7 +276,7 @@ function AboutGhostSlot() {
     <section aria-labelledby="about-gs" style={{ maxWidth: 440, margin: "0 auto", padding: "8px 22px 48px", display: "flex", flexDirection: "column", gap: 22 }}>
       <div>
         <h2 id="about-gs" style={h2}>What is GhostSlot?</h2>
-        <p style={p}>GhostSlot is a free campus app that shows which classrooms, library pods, cafés and sports courts are free right now, and books one for you. It runs in any phone or laptop browser.</p>
+        <p style={p}>GhostSlot is a free campus app that shows which classrooms, labs and library pods are empty right now, going by the timetable, and books one for you. It runs in any phone or laptop browser.</p>
       </div>
       <div>
         <h2 style={h2}>How it works</h2>
@@ -293,7 +292,7 @@ function AboutGhostSlot() {
       </div>
       <div>
         <h2 style={h2}>Where the data comes from</h2>
-        <p style={p}>Classrooms and labs use the timetable plus live bookings. Libraries, cafés and courts use campus Wi-Fi crowd levels, which are simulated in this prototype until the campus feed is connected. One demo room is sensed live by two ESP32 boards reading Wi-Fi signals.</p>
+        <p style={p}>Only the room timetables and GhostSlot bookings. A room is shown as empty when no class is timetabled in it and nobody has booked it. No cameras, no sensors, no tracking.</p>
       </div>
       <p style={{ ...p, fontSize: 12.5 }}>Made by Bhishu, Team COGNIX, at Chandigarh University.</p>
     </section>
@@ -304,9 +303,8 @@ export default function AuthScreen({ onAuthed }) {
   const [mode, setMode] = useState("login");
   const [role, setRoleState] = useState("student");
   const [department, setDepartment] = useState("");
-  const [accessCode, setAccessCode] = useState("");
   const meta = ROLE_META[role];
-  const setRole = (r) => { setRoleState(r); setDepartment(""); setAccessCode(""); setError(""); if (mode === "signup") setStep(1); };
+  const setRole = (r) => { setRoleState(r); setDepartment(""); setError(""); if (mode === "signup") setStep(1); };
   const [step, setStep] = useState(1);
   const [showPass, setShowPass] = useState(false);
   const [roll, setRoll] = useState("");
@@ -365,7 +363,6 @@ export default function AuthScreen({ onAuthed }) {
     if (!NAME_RE.test(name.trim())) { setError("You do have a name, right? Letters only, 2–60 characters."); return; }
     if (!ROLL_RE.test(roll.trim())) { setError(`That ${meta.idLabel} looks made up. 6–15 letters/numbers, like ${meta.idExample}.`); return; }
     if (meta.departments && !meta.departments.includes(department)) { setError(`Pick your ${meta.deptLabel.toLowerCase()}.`); return; }
-    if (role === "facilities" && !accessCode.trim()) { setError("Enter the facilities access code from the estate office."); return; }
     setStep(2);
   }
 
@@ -380,13 +377,13 @@ export default function AuthScreen({ onAuthed }) {
     if (!consent) { setError("Please read and accept the privacy notice."); return; }
     setBusy(true);
     try {
-      const res = await api("/auth/signup", { method: "POST", body: { role, department: meta.departments ? department : undefined, accessCode: role === "facilities" ? accessCode.trim() : undefined, name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
+      const res = await api("/auth/signup", { method: "POST", body: { role, department: meta.departments ? department : undefined, name: name.trim(), roll: roll.trim(), password: pass, consent: true, ageToken } });
       if (res.pending) { setPending({ link: window.location.origin + res.guardianPath, expiresAt: res.expiresAt }); return; }
       onAuthed(res.user, "signup");
     } catch (e) {
       if (e.code === "age_check_required") { setAgeToken(null); setStep(2); }
       if (e.code === "age_gate_locked") { setBlockedUntil(Date.now()); }
-      if (["roll_taken", "invalid_roll", "invalid_name", "invalid_department", "bad_access_code", "facilities_signup_closed", "invalid_role"].includes(e.code)) setStep(1);
+      if (["roll_taken", "invalid_roll", "invalid_name", "invalid_department", "invalid_role"].includes(e.code)) setStep(1);
       setError(e.message);
     } finally { setBusy(false); }
   }
@@ -408,7 +405,7 @@ export default function AuthScreen({ onAuthed }) {
           <BrandMark size={64} glow />
           <h1 style={{ margin: "12px 0 0", fontSize: "inherit", fontWeight: "inherit" }}><Wordmark size={28} /></h1>
           <p style={{ fontSize: 14, color: C.text, margin: "8px 0 0", textAlign: "center", fontWeight: 600 }}>Find a free room on campus in seconds.</p>
-          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, textAlign: "center" }}>For CU students, faculty and facilities staff. Random uncles still need not apply.</div>
+          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 4, textAlign: "center" }}>For CU students and faculty. Random uncles still need not apply.</div>
           {config?.demo && (
             <button type="button" onClick={tryDemo} disabled={busy} style={{ marginTop: 16, width: "100%", background: "transparent", color: C.text, border: "1px solid #A78BFA", borderRadius: 12, padding: "11px 14px", fontWeight: 700, fontSize: 14, cursor: busy ? "wait" : "pointer", fontFamily: "'Space Grotesk', sans-serif" }}>Try the demo, no signup</button>
           )}
@@ -464,16 +461,6 @@ export default function AuthScreen({ onAuthed }) {
                     </select>
                   </Field>
                 )}
-                {role === "facilities" && (config && !config.facilitiesSignupOpen ? (
-                  <div style={{ fontSize: 12, color: C.amber, background: "rgba(245,181,68,0.08)", border: "1px solid rgba(245,181,68,0.25)", borderRadius: 10, padding: "8px 10px" }}>
-                    Facilities sign-up is closed right now. Ask the estate office to set up your account, or use the facilities demo on the Login tab.
-                  </div>
-                ) : (
-                  <>
-                    <Field icon={KeyRound}><input aria-label="Facilities access code" autoComplete="off" value={accessCode} onChange={(e) => setAccessCode(e.target.value)} placeholder="facilities access code (from the estate office)" style={inputStyle} maxLength={64} /></Field>
-                    <div style={{ fontSize: 11, color: C.muted }}>Facilities accounts can change campus data, so they need a code from the estate office.</div>
-                  </>
-                ))}
                 <ErrorBox>{error}</ErrorBox>
                 <button onClick={nextFromDetails} style={{ ...silverBtn, marginTop: 4 }}>Continue <ArrowRight size={15} /></button>
               </div>

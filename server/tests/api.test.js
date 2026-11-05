@@ -17,7 +17,7 @@ let proc;
 
 before(async () => {
   proc = spawn(process.execPath, [SERVER], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GEMINI_API_KEY: "", FACILITIES_ACCESS_CODE: "estate-code-77", CSI_DEVICE_KEY: "dev-key-123", CSI_ADMIN_KEY: "", NODE_ENV: "test", SERVE_STATIC: "off" },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, GEMINI_API_KEY: "", NODE_ENV: "test", SERVE_STATIC: "off" },
     stdio: "ignore",
   });
   for (let i = 0; i < 50; i++) {
@@ -48,9 +48,9 @@ function client() {
 
 test("under-18 staff sign-up is refused and the browser is locked from retrying", async () => {
   const c = client();
-  const r1 = await c("/api/auth/age-check", { method: "POST", body: { dob: "2012-06-01", role: "facilities" } });
+  const r1 = await c("/api/auth/age-check", { method: "POST", body: { dob: "2012-06-01", role: "faculty" } });
   assert.equal(r1.status, 403); assert.equal(r1.data.error, "under_age");
-  const r2 = await c("/api/auth/age-check", { method: "POST", body: { dob: "1999-06-01", role: "facilities" } });
+  const r2 = await c("/api/auth/age-check", { method: "POST", body: { dob: "1999-06-01", role: "faculty" } });
   assert.equal(r2.status, 403); assert.equal(r2.data.error, "age_gate_locked");
   // Under 10 isn't a college student either.
   const r3 = await client()("/api/auth/age-check", { method: "POST", body: { dob: `${new Date().getFullYear() - 8}-01-01`, role: "student" } });
@@ -122,35 +122,28 @@ test("AI endpoints need a session; logout and delete-account work", async () => 
   assert.equal(again.status, 401);
 });
 
-test("roles: separate demo accounts, role-matched login, facilities sign-up needs the code", async () => {
+test("roles: student + faculty only, role-matched login, facilities is retired", async () => {
   const cfg = await client()("/api/auth/config");
-  assert.deepEqual(Object.keys(cfg.data.demos).sort(), ["facilities", "faculty", "student"]);
-  assert.equal(cfg.data.facilitiesSignupOpen, true);
+  assert.deepEqual(Object.keys(cfg.data.demos).sort(), ["faculty", "student"]);
+  assert.equal(cfg.data.facilitiesSignupOpen, undefined);
 
-  const f = client();
-  const fac = await f("/api/auth/login", { method: "POST", body: { role: "facilities", roll: cfg.data.demos.facilities.roll, password: "Ghost-Demo-2026" } });
-  assert.equal(fac.status, 200);
-  assert.equal(fac.data.user.role, "facilities");
-  assert.equal(fac.data.user.canManageTwin, true);
   const fy = await client()("/api/auth/login", { method: "POST", body: { role: "faculty", roll: cfg.data.demos.faculty.roll, password: "Ghost-Demo-2026" } });
+  assert.equal(fy.status, 200);
   assert.equal(fy.data.user.role, "faculty");
-  assert.equal(fy.data.user.canManageTwin, false);
   // Right ID and password, wrong role picked → refused with the generic message.
-  const wrong = await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: cfg.data.demos.facilities.roll, password: "Ghost-Demo-2026" } });
+  const wrong = await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: cfg.data.demos.faculty.roll, password: "Ghost-Demo-2026" } });
   assert.equal(wrong.status, 401);
   assert.equal(wrong.data.error, "invalid_credentials");
+  // The old facilities role can't log in or sign up any more.
+  assert.equal((await client()("/api/auth/login", { method: "POST", body: { role: "facilities", roll: "FMS2041", password: "Ghost-Demo-2026" } })).status, 401);
 
   const s = client();
   const age = async () => (await s("/api/auth/age-check", { method: "POST", body: { dob: "1990-05-05" } })).data.ageToken;
   const base = { name: "Sunita Devi", roll: "FMS3301", password: "Pipe-fixer-88", consent: true };
-  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", ageToken: await age() } })).status, 403);
-  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", accessCode: "guess", ageToken: await age() } })).status, 403);
-  assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Rocket science", accessCode: "estate-code-77", ageToken: await age() } })).status, 400);
+  const fac = await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", ageToken: await age() } });
+  assert.equal(fac.status, 400);
+  assert.equal(fac.data.error, "invalid_role");
   assert.equal((await s("/api/auth/signup", { method: "POST", body: { ...base, role: "admin", ageToken: await age() } })).status, 400);
-  const made = await s("/api/auth/signup", { method: "POST", body: { ...base, role: "facilities", department: "Plumbing", accessCode: "estate-code-77", ageToken: await age() } });
-  assert.equal(made.status, 201);
-  assert.equal(made.data.user.role, "facilities");
-  assert.equal(made.data.user.department, "Plumbing");
 
   // Faculty sign-up needs a department but no code.
   const t = client();
@@ -164,7 +157,7 @@ test("under-18 students join only after a parent/guardian approves; staff stay 1
   const kid = client();
   const y = new Date().getFullYear();
   const dob = `${y - 16}-01-01`;
-  // Faculty / facilities under 18 are still blocked (and locked out for 24 h).
+  // Faculty under 18 are still blocked (and locked out for 24 h).
   const staff = client();
   assert.equal((await staff("/api/auth/age-check", { method: "POST", body: { dob, role: "faculty" } })).status, 403);
 
@@ -205,18 +198,12 @@ test("under-18 students join only after a parent/guardian approves; staff stay 1
   assert.equal((await client()("/api/auth/login", { method: "POST", body: { role: "student", roll: "25BCS20001", password: "Lab-coat-2026" } })).status, 401);
 });
 
-test("Wi-Fi CSI: device key required, admin endpoints off without a key", async () => {
+test("sensing, door counter, check-in and twin endpoints are gone", async () => {
   const c = client();
-  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", value: 50 }, origin: null })).status, 401);
-  const ok = await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", value: 50 }, origin: null, headers: { "X-Device-Key": "dev-key-123" } });
-  assert.equal(ok.status, 409); // key accepted; server is in simulation mode
-  // Heartbeat marks the board seen without feeding a reading.
-  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", heartbeat: true }, origin: null })).status, 401);
-  const hb = await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", heartbeat: true }, origin: null, headers: { "X-Device-Key": "dev-key-123" } });
-  assert.equal(hb.status, 200);
-  assert.ok(hb.data.status.devices["node-a"].lastSeen);
-  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "oled", heartbeat: true }, origin: null, headers: { "X-Device-Key": "dev-key-123" } })).status, 400);
-  assert.equal((await c("/api/csi/mode", { method: "POST", body: { mode: "hardware" }, origin: null })).status, 403);
+  for (const path of ["/api/csi/status", "/api/csi/mesh/status", "/api/door/status", "/api/checkins", "/api/twin"]) {
+    assert.equal((await c(path)).status, 404, path);
+  }
+  assert.equal((await c("/api/csi/demo-room", { method: "POST", body: { nodeId: "node-a", value: 50 }, origin: null, headers: { "X-Device-Key": "dev-key-123" } })).status, 404);
 });
 
 test("security headers are present", async () => {

@@ -135,12 +135,11 @@ export function ageOn(dob, now = new Date()) {
 // ---------------------------------------------------------------------------
 export const ROLL_RE = /^[A-Za-z0-9]{6,15}$/;
 
-// Who can have an account, and the department / team lists each role picks
+// Who can have an account, and the department list faculty pick
 // from. Keep these in sync with src/auth/roles.js (the UI copy).
-export const ROLES = ["student", "faculty", "facilities"];
+export const ROLES = ["student", "faculty"];
 export const DEPARTMENTS = {
   faculty: ["CSE", "AIT-CSE", "ECE", "Mechanical", "Civil", "Applied Sciences", "Management", "Other"],
-  facilities: ["Electrical", "Plumbing", "Housekeeping", "Estate office"],
 };
 export const NAME_RE = /^[\p{L}][\p{L} .'-]{1,59}$/u;
 

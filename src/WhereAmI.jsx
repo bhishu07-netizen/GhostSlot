@@ -1,8 +1,8 @@
-// "Where are you?" bar: GPS, pick your block, or the QR on a room door.
+// "Where are you?" bar: GPS, pick your block, or tap the map.
 // Every button is guarded, so mashing "Use my location" fires one GPS
 // request, not five, and every failure ends in a clear next step.
 import React, { useMemo, useRef, useState } from "react";
-import { LocateFixed, MapPin, X, Loader2, QrCode, ChevronDown } from "lucide-react";
+import { LocateFixed, MapPin, X, Loader2, ChevronDown } from "lucide-react";
 import { readGps, fitGeo, loadAnchors, onCampus, nearestPlace } from "./location";
 
 const C = { card: "#120F1E", line: "rgba(196,181,253,0.14)", text: "#F4F1FF", sub: "#A39CC4", muted: "#857DA8", violet: "#8B5CF6", lav: "#C4B5FD", warn: "#F5B544" };
@@ -11,7 +11,7 @@ function ago(at) {
   const m = Math.round((Date.now() - at) / 60000);
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
 }
-const SOURCE = { gps: "GPS", pick: "you picked", qr: "door QR", map: "map tap" };
+const SOURCE = { gps: "GPS", pick: "you picked", qr: "room link", map: "map tap" };
 
 export default function WhereAmI({ places, location, onSet, onClear, compact = false }) {
   const [busy, setBusy] = useState(false);
@@ -99,11 +99,6 @@ export default function WhereAmI({ places, location, onSet, onClear, compact = f
       )}
 
       {msg && <div role="status" style={{ fontSize: 11.5, color: msg.tone === "warn" ? C.warn : C.sub, lineHeight: 1.45 }}>{msg.text}</div>}
-      {!location && !compact && (
-        <div style={{ fontSize: 10.5, color: C.muted, display: "flex", alignItems: "center", gap: 5 }}>
-          <QrCode size={11} /> Tip: scan the GhostSlot QR on any room door to set your spot instantly.
-        </div>
-      )}
     </div>
   );
 }
