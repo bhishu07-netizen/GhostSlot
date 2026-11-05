@@ -20,7 +20,9 @@ and lets you book one. That's it. No Wi-Fi sensing, no cameras, no crowd monitor
 - **AI search:** type it the way you'd say it ("quiet room near CSE for 90 minutes with charging").
   Uses Gemini when a key is set, otherwise a built-in parser.
 - **Map:** the rooms on the campus map, green when free, with walking time and directions from where you are.
-- **Booking:** lock a free room for your time. It frees itself when the time is up, or tap "I'm out".
+- **Booking:** only rooms the timetable shows as empty can be booked, and you say what it's for.
+  Students: group study, project work, exam / placement prep. Faculty: extra class, doubt / remedial
+  session, other work. It frees itself when the time is up, or tap "I'm out".
 - **Timetable:** add your classes (or import a CSV), and the room timetables (manually or CSV).
 
 See [SECURITY.md](SECURITY.md) and [COMPLIANCE.md](COMPLIANCE.md).

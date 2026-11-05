@@ -97,6 +97,21 @@ const SEED_TEACHING_SLOTS = everyWeekday([
   { id: "t2", day: "Mon", start: "12:00", end: "13:00", subject: "OS Lab · A2 · 104" },
   { id: "t3", day: "Mon", start: "15:00", end: "16:00", subject: "AI Lab · CSE Lab 9" },
 ]);
+// Bookings are only for rooms the timetable shows as empty, and only for work:
+// students for group study, projects or prep; faculty for an extra class or other work.
+const BOOKING_PURPOSES = {
+  student: [
+    { id: "group", label: "Group study", hint: "study with friends" },
+    { id: "project", label: "Project work", hint: "build, discuss, rehearse" },
+    { id: "prep", label: "Exam / placement prep", hint: "focused preparation" },
+  ],
+  faculty: [
+    { id: "extra", label: "Extra class", hint: "make-up or extra lecture" },
+    { id: "doubt", label: "Doubt / remedial session", hint: "small group of students" },
+    { id: "work", label: "Other work", hint: "evaluation, meeting, prep" },
+  ],
+};
+
 // Each role gets its own app: first tab is its home.
 const ROLE_TABS = {
   student: [
@@ -674,7 +689,8 @@ export default function GhostSlot() {
   const [matchMyFreeTime, setMatchMyFreeTime] = useState(false);
   // An active booking stores its real end time, so the countdown stays right
   // across reloads, sleeping phones and background tabs.
-  const [bookingRaw, setBooking] = useState(null); // { roomId, slotId, roomName, endsAt }
+  const [bookingRaw, setBooking] = useState(null); // { roomId, slotId, roomName, endsAt, purpose }
+  const [bookAsk, setBookAsk] = useState(null);      // { room, status, wanted } while picking what the booking is for
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     if (!bookingRaw) return;
@@ -943,23 +959,28 @@ export default function GhostSlot() {
   }
 
   function handleBook(room, status, wanted, subject) {
-    if (!once("book", 1200)) return;   // double tap / double click
     if (bookingRef.current) { setToast("You already have a room. End it from the bar at the top first."); return; }
-    if (room.bookable === false) { setToast(`${room.name} is walk-in only. No booking needed.`); return; }
-    // Re-check right now: the card on screen might be a few seconds old.
+    if (room.bookable === false) { setToast(`${room.name} can't be booked.`); return; }
+    // Only rooms the timetable shows as empty can be booked. Re-check right now:
+    // the card on screen might be a few seconds old.
     const fresh = spaceStatus(room, roomSlots[room.id] || [], day, nowMin);
-    if (!fresh.free) { setToast(`${room.name} just got taken. Pick the next best one.`); return; }
+    if (fresh.closed) { setToast(`${room.name} is closed right now.`); return; }
+    if (!fresh.free) { setToast(`${room.name} has a class right now. Only empty rooms can be booked.`); return; }
+    // First ask what it's for (group study, extra class…), then book.
+    if (!subject) { setBookAsk({ room, status: fresh, wanted }); return; }
+    if (!once("book", 1200)) return;   // double tap / double click
     status = fresh;
     const duration = Math.max(15, Math.min(wanted || prefs.duration || 30, status.freeFor));
     const endMin = nowMin + duration;
     const slotId = `book_${Date.now()}`;
-    const label = role === "faculty" ? `${subject || "Extra class"} (you)` : "Reserved (you)";
+    const purpose = String(subject).slice(0, 60);
+    const label = `${purpose} (${role === "faculty" ? "you" : "booked"})`;
     setRoomSlots((rs) => ({ ...rs, [room.id]: [...(rs[room.id] || []), { id: slotId, day, start: time, end: toHHMM(endMin), subject: label }] }));
-    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000 };
+    const nb = { roomId: room.id, slotId, roomName: room.name, endsAt: Date.now() + duration * 60 * 1000, purpose };
     bookingRef.current = nb;
     setBooking(nb);
     if (role === "faculty") setExtraBooked((n) => n + 1);
-    setToast(role === "faculty" ? `${room.name} booked for ${subject || "your extra class"}, ${time}–${toHHMM(endMin)}.` : `${room.name} is yours for ${fmtMin(duration)}, till ${toHHMM(endMin)}.`);
+    setToast(`${room.name} booked for ${purpose.toLowerCase()}, ${time}–${toHHMM(endMin)}.`);
   }
   function endEarly() {
     if (!booking || !once("end", 1000)) return;
@@ -1236,11 +1257,35 @@ export default function GhostSlot() {
         <TimeDayPicker {...pickerProps} />
       </div>{/* end gs-mobile-topbar */}
 
+      {bookAsk && (
+        <div role="dialog" aria-modal="true" aria-label="What is this booking for?" onClick={() => setBookAsk(null)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(7,6,12,0.72)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, background: "#120F1E", border: "1px solid rgba(196,181,253,0.14)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", gap: 10, marginBottom: "env(safe-area-inset-bottom)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "#A39CC4", fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.5 }}>BOOK AN EMPTY ROOM</div>
+                <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18 }}>{bookAsk.room.name}</div>
+                <div style={{ fontSize: 12, color: "#A39CC4" }}>Empty till {toHHMM(bookAsk.status.freeUntilMin)} by the timetable. What's it for?</div>
+              </div>
+              <button onClick={() => setBookAsk(null)} aria-label="Cancel" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={18} color="#A39CC4" /></button>
+            </div>
+            {(BOOKING_PURPOSES[role] || BOOKING_PURPOSES.student).map((p) => (
+              <button key={p.id} onClick={() => { const a = bookAsk; setBookAsk(null); handleBook(a.room, a.status, a.wanted, p.label); }}
+                style={{ textAlign: "left", background: "#0C0A16", border: "1px solid rgba(196,181,253,0.12)", borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: "#F4F1FF", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span><span style={{ display: "block", fontWeight: 700, fontSize: 14 }}>{p.label}</span><span style={{ fontSize: 12, color: "#A39CC4" }}>{p.hint}</span></span>
+                <ChevronRight size={16} color="#C4B5FD" />
+              </button>
+            ))}
+            <div style={{ fontSize: 11, color: "#857DA8", lineHeight: 1.4 }}>Only rooms with no class on the timetable can be booked. It frees itself when your time is up.</div>
+          </div>
+        </div>
+      )}
+
       {booking && (
         <div style={{ margin: "0 18px 14px", background: "linear-gradient(180deg, #F1ECFF, #A78BFA)", color: "#0A0812", boxShadow: "0 1px 0 rgba(255,255,255,.5) inset, 0 10px 30px rgba(0,0,0,.45)", borderRadius: 16, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 11, color: "rgba(10,8,18,0.6)", fontFamily: "'JetBrains Mono', monospace" }}>RESERVED BY YOU</div>
             <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15 }}>{booking.roomName}</div>
+            {booking.purpose && <div style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(10,8,18,0.7)" }}>{booking.purpose}</div>}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 500 }}>{fmt(booking.secondsLeft)}</div>
